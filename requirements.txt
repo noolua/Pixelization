@@ -1,0 +1,15 @@
+# PyTorch and torchvision (CUDA versions recommended)
+torch>=1.7.1
+torchvision>=0.8.2
+
+# Image processing
+Pillow
+numpy
+
+# Visualization
+matplotlib
+tensorboard
+
+# Utilities
+tqdm
+dominate

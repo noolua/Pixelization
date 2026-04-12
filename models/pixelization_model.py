@@ -99,7 +99,9 @@ class PixelizationModel(BaseModel):
         # Load parameters
         print('--------Load AliasNet--------')
         load_path = './alias_net.pth'
-        state_dict = torch.load(load_path)
+        # state_dict = torch.load(load_path)
+        device = 'mps' if torch.backends.mps.is_available() else 'cpu'
+        state_dict = torch.load(load_path, map_location=device)
         for p in list(state_dict.keys()):
             state_dict["module."+str(p)] = state_dict.pop(p)
         self.alias_net.load_state_dict(state_dict)

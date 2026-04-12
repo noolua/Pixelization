@@ -89,18 +89,28 @@ class Model():
             self.G_A_net = define_G(3, 3, 64, "c2pGen", "instance", False, "normal", 0.02, [0])
             self.alias_net = define_G(3, 3, 64, "antialias", "instance", False, "normal", 0.02, [0])
 
-            G_A_state = torch.load("./checkpoints/{}/160_net_G_A.pth".format(self.model_name), map_location=str(self.device))
-            for p in list(G_A_state.keys()):
-                G_A_state["module."+str(p)] = G_A_state.pop(p)
+            G_A_state = torch.load("./checkpoints/{}/160_net_G_A.pth".format(self.model_name), map_location='cpu')
+            # 移除 module. 前缀（DataParallel 训练产生）
+            if list(G_A_state.keys())[0].startswith('module.'):
+                new_state_dict = {}
+                for k, v in G_A_state.items():
+                    new_state_dict[k.replace('module.', '')] = v
+                G_A_state = new_state_dict
             self.G_A_net.load_state_dict(G_A_state)
+            self.G_A_net.to(self.device)
 
-            alias_state = torch.load("./alias_net.pth", map_location=str(self.device))
-            for p in list(alias_state.keys()):
-                alias_state["module."+str(p)] = alias_state.pop(p)
+            alias_state = torch.load("./alias_net.pth", map_location='cpu')
+            # 移除 module. 前缀（DataParallel 训练产生）
+            if list(alias_state.keys())[0].startswith('module.'):
+                new_state_dict = {}
+                for k, v in alias_state.items():
+                    new_state_dict[k.replace('module.', '')] = v
+                alias_state = new_state_dict
             self.alias_net.load_state_dict(alias_state)
+            self.alias_net.to(self.device)
 
             code = torch.tensor(MLP_code, device=self.device).reshape((1, 256, 1, 1))
-            self.cell_size_code = self.G_A_net.module.MLP(code)
+            self.cell_size_code = self.G_A_net.MLP(code)
 
     def pixelize(self, in_img, out_img, cell_size):
         with torch.no_grad():
@@ -113,8 +123,8 @@ class Model():
                                Image.BICUBIC)
             in_t = process(in_img).to(self.device)
 
-            feature = self.G_A_net.module.RGBEnc(in_t)
-            images = self.G_A_net.module.RGBDec(feature, self.cell_size_code)
+            feature = self.G_A_net.RGBEnc(in_t)
+            images = self.G_A_net.RGBDec(feature, self.cell_size_code)
             out_t = self.alias_net(images)
             save(out_t, out_img, cell_size, best_cell_size)
 
@@ -189,7 +199,13 @@ def pixelize_cli():
                 out_path = os.path.join(out_path, file)
         pairs = [(in_path, out_path)]
 
-    m = Model(model_name, device = "cpu" if use_cpu else "cuda")
+    if use_cpu:
+        device = "cpu"
+    elif torch.backends.mps.is_available():
+        device = "mps"
+    else:
+        device = "cpu"
+    m = Model(model_name, device=device)
     m.load()
 
     for in_file, out_file in pairs:
