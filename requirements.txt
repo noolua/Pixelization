@@ -13,3 +13,8 @@ tensorboard
 # Utilities
 tqdm
 dominate
+
+# Web Service
+fastapi
+uvicorn[standard]
+python-multipart
