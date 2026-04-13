@@ -128,6 +128,23 @@ class Model():
             out_t = self.alias_net(images)
             save(out_t, out_img, cell_size, best_cell_size)
 
+    def pixelize_original_size(self, in_img, out_img, cell_size):
+        """像素化并返回原始像素网格尺寸（不放大）"""
+        with torch.no_grad():
+            in_img = Image.open(in_img).convert('RGB')
+            in_img = rescale(in_img)
+            width, height = in_img.size
+            cell_size = cell_size
+            best_cell_size = 4
+            in_img = in_img.resize(((width // cell_size) * best_cell_size, (height // cell_size) * best_cell_size),
+                               Image.BICUBIC)
+            in_t = process(in_img).to(self.device)
+
+            feature = self.G_A_net.RGBEnc(in_t)
+            images = self.G_A_net.RGBDec(feature, self.cell_size_code)
+            out_t = self.alias_net(images)
+            save_original_size(out_t, out_img, cell_size, best_cell_size)
+
 
 
 def process(img):
@@ -154,6 +171,16 @@ def save(tensor, file, cell_size, best_cell_size=4):
     img = Image.fromarray(img)
     img = img.resize((img.size[0]//best_cell_size, img.size[1]//best_cell_size), Image.NEAREST)
     img = img.resize((img.size[0]*cell_size, img.size[1]*cell_size), Image.NEAREST)
+    img.save(file)
+
+def save_original_size(tensor, file, cell_size, best_cell_size=4):
+    """保存为原始像素网格尺寸（不放大）"""
+    img = tensor.data[0].cpu().float().numpy()
+    img = (np.transpose(img, (1, 2, 0)) + 1) / 2.0 * 255.0
+    img = img.astype(np.uint8)
+    img = Image.fromarray(img)
+    # 只缩小到像素网格尺寸，不放大
+    img = img.resize((img.size[0]//best_cell_size, img.size[1]//best_cell_size), Image.NEAREST)
     img.save(file)
 
 

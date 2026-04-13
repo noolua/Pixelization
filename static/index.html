@@ -163,6 +163,30 @@
             border: 1px solid #eee;
         }
 
+        .download-btn {
+            margin-top: 15px;
+            padding: 10px 24px;
+            background: #34c759;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.3s;
+            text-align: center;
+            display: inline-block;
+        }
+
+        .download-btn:hover {
+            background: #28a745;
+        }
+
+        .download-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
         .loading {
             display: none;
             text-align: center;
@@ -252,6 +276,9 @@
                 <div class="image-box">
                     <h3>像素化结果</h3>
                     <img id="resultImage" src="" alt="像素化结果">
+                    <div style="text-align: center;">
+                        <button id="downloadBtn" class="download-btn">下载原始尺寸</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -268,6 +295,7 @@
         const resultImage = document.getElementById('resultImage');
         const loading = document.getElementById('loading');
         const error = document.getElementById('error');
+        const downloadBtn = document.getElementById('downloadBtn');
 
         let selectedFile = null;
 
@@ -358,6 +386,48 @@
             } finally {
                 loading.classList.remove('show');
                 processBtn.disabled = false;
+            }
+        });
+
+        // 下载原始尺寸图像
+        downloadBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            const originalText = downloadBtn.textContent;
+            downloadBtn.textContent = '下载中...';
+            downloadBtn.disabled = true;
+
+            const formData = new FormData();
+            formData.append('image', selectedFile);
+            formData.append('cell_size', cellSize.value);
+            formData.append('original_size', 'true');
+
+            try {
+                const response = await fetch('/pixelize', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || '下载失败');
+                }
+
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `pixelized_${cellSize.value}_${selectedFile.name}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                downloadBtn.textContent = originalText;
+                downloadBtn.disabled = false;
             }
         });
 

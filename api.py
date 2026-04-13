@@ -72,12 +72,16 @@ async def root():
 @app.post("/pixelize")
 async def pixelize(
     image: UploadFile = File(..., description="PNG 图像文件"),
-    cell_size: int = Form(4, description="像素化程度，范围 2-8")
+    cell_size: int = Form(4, description="像素化程度，范围 2-8"),
+    original_size: bool = Form(False, description="是否返回原始像素化尺寸（不放大）")
 ):
     """
     像素化接口
 
     接收 PNG 图像和 cell_size 参数，返回像素化后的图像
+
+    - original_size=False: 返回放大后的像素化图像（用于预览）
+    - original_size=True: 返回原始像素网格尺寸（用于下载）
     """
     # 验证参数
     if cell_size < 2 or cell_size > 8:
@@ -112,7 +116,10 @@ async def pixelize(
         temp_output.close()
 
         # 调用模型进行像素化
-        model.pixelize(temp_input.name, temp_output.name, cell_size)
+        if original_size:
+            model.pixelize_original_size(temp_input.name, temp_output.name, cell_size)
+        else:
+            model.pixelize(temp_input.name, temp_output.name, cell_size)
 
         # 读取结果图像
         with open(temp_output.name, "rb") as f:
@@ -141,4 +148,11 @@ async def health():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import os
+
+    # 从环境变量读取配置，默认只监听本地
+    host = os.getenv("API_HOST", "127.0.0.1")
+    port = int(os.getenv("API_PORT", "8000"))
+
+    print(f"Starting server on http://{host}:{port}")
+    uvicorn.run(app, host=host, port=port)
