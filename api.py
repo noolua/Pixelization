@@ -74,15 +74,12 @@ async def root():
 async def pixelize(
     image: UploadFile = File(..., description="PNG 图像文件"),
     cell_size: int = Form(4, description="像素化程度，范围 2-8"),
-    original_size: bool = Form(False, description="是否返回原始像素化尺寸（不放大）")
 ):
     """
     像素化接口
 
-    接收 PNG 图像和 cell_size 参数，返回像素化后的图像
-
-    - original_size=False: 返回放大后的像素化图像（用于预览）
-    - original_size=True: 返回原始像素网格尺寸（用于下载）
+    接收 PNG 图像和 cell_size 参数，返回原始像素网格尺寸的像素化图像。
+    缩放预览由前端 CSS 处理。
     """
     # 验证参数
     if cell_size < 2 or cell_size > 8:
@@ -116,11 +113,8 @@ async def pixelize(
         temp_output = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
         temp_output.close()
 
-        # 调用模型进行像素化
-        if original_size:
-            model.pixelize_original_size(temp_input.name, temp_output.name, cell_size)
-        else:
-            model.pixelize(temp_input.name, temp_output.name, cell_size)
+        # 调用模型进行像素化（始终返回原始像素网格尺寸）
+        model.pixelize_original_size(temp_input.name, temp_output.name, cell_size)
 
         # 读取结果图像
         with open(temp_output.name, "rb") as f:

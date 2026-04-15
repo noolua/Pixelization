@@ -163,6 +163,41 @@
             border: 1px solid #eee;
         }
 
+        .image-box img.pixelated-preview {
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+
+        .image-viewport {
+            overflow: auto;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            max-height: 500px;
+        }
+
+        .zoom-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            justify-content: center;
+        }
+
+        .zoom-controls button {
+            padding: 4px 12px;
+            font-size: 16px;
+            line-height: 1;
+            min-width: 32px;
+        }
+
+        .zoom-controls .zoom-level {
+            font-size: 13px;
+            color: #666;
+            min-width: 40px;
+            text-align: center;
+        }
+
         .download-btn {
             margin-top: 15px;
             padding: 10px 24px;
@@ -304,11 +339,27 @@
             <div class="image-compare">
                 <div class="image-box">
                     <h3>原图</h3>
-                    <img id="originalImage" src="" alt="原图">
+                    <div class="zoom-controls">
+                        <button onclick="zoom('originalImage', -1)">-</button>
+                        <span class="zoom-level" id="zoom-originalImage">100%</span>
+                        <button onclick="zoom('originalImage', 1)">+</button>
+                        <button onclick="zoom('originalImage', 0)">重置</button>
+                    </div>
+                    <div class="image-viewport">
+                        <img id="originalImage" src="" alt="原图">
+                    </div>
                 </div>
                 <div class="image-box">
                     <h3>像素化结果</h3>
-                    <img id="resultImage" src="" alt="像素化结果">
+                    <div class="zoom-controls">
+                        <button onclick="zoom('resultImage', -1)">-</button>
+                        <span class="zoom-level" id="zoom-resultImage">100%</span>
+                        <button onclick="zoom('resultImage', 1)">+</button>
+                        <button onclick="zoom('resultImage', 0)">重置</button>
+                    </div>
+                    <div class="image-viewport">
+                        <img id="resultImage" class="pixelated-preview" src="" alt="像素化结果">
+                    </div>
                     <p class="color-info" id="colorInfo"></p>
                     <div style="text-align: center;">
                         <button id="optimizeBtn" class="optimize-btn" disabled>颜色优化</button>
@@ -317,7 +368,15 @@
                 </div>
                 <div class="image-box" id="optimizedBox" style="display:none;">
                     <h3>颜色优化结果</h3>
-                    <img id="optimizedImage" src="" alt="颜色优化结果">
+                    <div class="zoom-controls">
+                        <button onclick="zoom('optimizedImage', -1)">-</button>
+                        <span class="zoom-level" id="zoom-optimizedImage">100%</span>
+                        <button onclick="zoom('optimizedImage', 1)">+</button>
+                        <button onclick="zoom('optimizedImage', 0)">重置</button>
+                    </div>
+                    <div class="image-viewport">
+                        <img id="optimizedImage" class="pixelated-preview" src="" alt="颜色优化结果">
+                    </div>
                     <p class="color-info" id="optimizedColorInfo"></p>
                     <div style="text-align: center;">
                         <button id="downloadOptimizedBtn" class="download-btn">下载优化图像</button>
@@ -349,6 +408,7 @@
 
         let selectedFile = null;
         let pixelatedBlob = null;
+        let optimizedBlob = null;
 
         // 点击上传区域触发文件选择
         uploadArea.addEventListener('click', () => {
@@ -459,44 +519,16 @@
 
         // 下载原始尺寸图像
         downloadBtn.addEventListener('click', async () => {
-            if (!selectedFile) return;
+            if (!pixelatedBlob) return;
 
-            const originalText = downloadBtn.textContent;
-            downloadBtn.textContent = '下载中...';
-            downloadBtn.disabled = true;
-
-            const formData = new FormData();
-            formData.append('image', selectedFile);
-            formData.append('cell_size', cellSize.value);
-            formData.append('original_size', 'true');
-
-            try {
-                const response = await fetch('/pixelize', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || '下载失败');
-                }
-
-                const blob = await response.blob();
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `pixelized_${cellSize.value}_${selectedFile.name}`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-
-            } catch (err) {
-                showError(err.message);
-            } finally {
-                downloadBtn.textContent = originalText;
-                downloadBtn.disabled = false;
-            }
+            const url = URL.createObjectURL(pixelatedBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `pixelized_${cellSize.value}_${selectedFile.name}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         });
 
         // 统计图像颜色数
@@ -544,6 +576,7 @@
                 }
 
                 const blob = await response.blob();
+                optimizedBlob = blob;
                 const url = URL.createObjectURL(blob);
                 optimizedImage.src = url;
                 optimizedBox.style.display = 'block';
@@ -564,15 +597,19 @@
             }
         });
 
-        // 下载优化图像
-        downloadOptimizedBtn.addEventListener('click', () => {
-            if (!optimizedImage.src) return;
+        // 下载优化图像（原始像素网格尺寸）
+        downloadOptimizedBtn.addEventListener('click', async () => {
+            if (!optimizedBlob) return;
+
+            const target = parseInt(targetColors.value);
+            const url = URL.createObjectURL(optimizedBlob);
             const a = document.createElement('a');
-            a.href = optimizedImage.src;
-            a.download = `optimized_${targetColors.value}colors_${selectedFile ? selectedFile.name : 'image.png'}`;
+            a.href = url;
+            a.download = `optimized_${target}colors_${selectedFile.name}`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         });
 
         function showError(message) {
@@ -582,6 +619,27 @@
 
         function hideError() {
             error.classList.remove('show');
+        }
+
+        // 缩放控制
+        const zoomScales = {};
+        const ZOOM_STEP = 2;  // 每次放大/缩小 2 倍
+
+        function zoom(imgId, direction) {
+            const img = document.getElementById(imgId);
+            const label = document.getElementById('zoom-' + imgId);
+            if (!zoomScales[imgId]) zoomScales[imgId] = 1;
+
+            if (direction === 0) {
+                zoomScales[imgId] = 1;
+            } else {
+                zoomScales[imgId] *= (direction > 0 ? ZOOM_STEP : 1 / ZOOM_STEP);
+                zoomScales[imgId] = Math.max(0.25, Math.min(zoomScales[imgId], 32));
+            }
+
+            const scale = zoomScales[imgId];
+            img.style.width = (scale * 100) + '%';
+            label.textContent = Math.round(scale * 100) + '%';
         }
     </script>
 </body>
