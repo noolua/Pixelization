@@ -242,7 +242,17 @@ def export(args):
     print("[3/4] Building ONNX-friendly pipeline...")
     with torch.no_grad():
         code = torch.tensor(MLP_CODE).reshape(1, 256, 1, 1)
-        cell_size_code = G_A_net.MLP(code)
+        cell_size_code = G_A_net.MLP(code)  # shape: (1, 2048)
+
+        # Normalize each 256-element slice to unit norm.
+        # The modulation path does: w_mod = w * code, then normalizes by |w_mod|.
+        # Since only the *direction* of code matters (not magnitude), normalizing
+        # code to unit norm is mathematically equivalent (eps difference < 1e-10).
+        # This keeps all intermediate values in FP16-safe range, enabling
+        # post-export FP16 conversion.
+        for i in range(0, cell_size_code.shape[1], 256):
+            s = cell_size_code[:, i:i+256]
+            cell_size_code[:, i:i+256] = s / torch.sqrt(torch.sum(s ** 2))
 
     pipeline = PixelizationPipeline(G_A_net, alias_net, cell_size_code)
     pipeline.eval()

@@ -134,6 +134,36 @@ ONNX 简化版直接在 4D `(out_c, in_c, k, k)` 上乘 code，数学不等价�
 
 ---
 
+## 任务 3.5：FP16 精度优化
+
+**状态：已完成（weight-only 方案）**
+
+### 完成的工作
+
+- [x] 创建 `tests/convert_fp16.py` — 多策略 FP16 转换脚本
+- [x] 根因分析：cell_size_code 值 ~17M 超出 FP16 范围（65504）
+- [x] 修复：导出时对 cell_size_code 做 L2 归一化（数学等价，eps 差异 < 1e-10）
+- [x] 发现 `onnxconverter_common` v1.16.0 的 Cast 节点类型推导 bug
+- [x] 实现 weight-only FP16 fallback（38.2 MB，无计算加速）
+- [x] 精度验证：max diff 2.2e-3（像素域 ~0.57/255，视觉无损）
+- [x] 技术备忘更新：`bref.md`
+
+### 结果
+
+| 指标 | FP32 | FP16 weight-only |
+|------|------|-----------------|
+| 文件大小 | 76.2 MB | 38.2 MB |
+| 512x512 CPU 速度 | 2388ms | 2383ms（无变化） |
+| CoreML EP | 148/230 节点，746ms | 同左 |
+| 256x256 vs PyTorch | 6.5e-4 | 2.2e-3 |
+
+### 未完成 / 未来方向
+
+- [ ] 真混合精度 FP16（需手写 ONNX 图转换器绕过 onnxconverter_common bug）
+- [ ] FP8 不适用于 Apple Silicon（仅 NVIDIA Hopper/Ada）
+
+---
+
 ## 任务 4：打包 & 分发
 
 **状态：待开始**
