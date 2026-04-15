@@ -64,18 +64,73 @@
 
 ---
 
+## 任务 2.5：修复 ONNX 导出 Bug
+
+**状态：已完成**
+
+当前 ONNX 模型在真实图片上效果差，分析发现两个关键 bug：
+
+### Bug 1（致命）：权重共享错误
+
+原始 `RGBDecoder`（`models/c2pGen.py:238-254`）只用 `mod_conv_1` 和 `mod_conv_2`，其中 `mod_conv_2` 被复用 7 次（权重共享）。`mod_conv_3..8` 在 `__init__` 中定义但从未在 `forward` 中使用，权重是随机未训练的。
+
+ONNX 导出时错误地从 `orig.mod_conv_3..8` 拷贝了这些未训练权重。
+
+**修复**：`tests/export_onnx.py` 的 `ONNXRGBDecoder.__init__` 中，`mod_conv_3..8` 全部改为从 `orig.mod_conv_2` 拷贝：
+```python
+self.mod_conv_3 = ONNXModulationConvBlock(orig.mod_conv_2)  # 而非 orig.mod_conv_3
+# ... 同理 4..8
+```
+
+### Bug 2：ModulationConvBlock 调制数学不等价
+
+原始 `ModulationConvBlock`（`models/basic_layer.py:30-44`）使用 5D view 进行调制：
+```python
+_weight = weight.view(1, k, k, in_c, out_c)
+_weight = _weight * code.view(1, 1, 1, in_c, 1)  # 5D view 调制
+```
+5D view 改变了 in_c 维度在内存中的元素分组，乘 code 作用于与 4D 不同的元素组。
+
+ONNX 简化版直接在 4D `(out_c, in_c, k, k)` 上乘 code，数学不等价。
+
+**修复**：`tests/export_onnx.py` 的 `ONNXModulationConvBlock.forward` 完整复刻原始 5D view 调制逻辑，仅简化 `groups=1`。
+
+### 验证步骤
+
+- [x] 重新导出 ONNX 模型：`python tests/export_onnx.py`
+- [x] 运行验证：`python tests/verify_onnx.py` — 精度应显著提升
+- [x] 运行基准测试：`python tests/benchmark_onnx.py`
+- [x] 用真实图片对比 Python 推理 vs Go ONNX 推理的视觉效果
+
+---
+
 ## 任务 3：Go 服务重写
 
-**状态：待开始**
+**状态：代码已编写，待在远程 M4 机器上验证**
 
-- [ ] 技术选型：`onnxruntime-go` 或 `go-onnxruntime`
-- [ ] 实现图像预处理（resize, normalize to [-1, 1], center crop to multiple of 4）
-- [ ] 实现图像后处理（反归一化, resize by cell_size）
-- [ ] 实现 HTTP API（参考 `api.py` 的接口设计）
+代码位于 `server/` 目录，已在远程 M4 机器上成功编译运行。
+
+- [x] 技术选型：`github.com/yalue/onnxruntime_go` + `github.com/disintegration/imaging`
+- [x] 实现图像预处理（resize, normalize to [-1, 1], center crop to multiple of 4）
+- [x] 实现图像后处理（反归一化, resize by cell_size）
+- [x] 实现 HTTP API（复刻 `api.py` 接口）
   - `POST /pixelize` — 接收图片 + cell_size 参数
   - `GET /health` — 健康检查
-- [ ] 静态前端（移植 `static/index.html`）
-- [ ] 编译为单二进制 + ONNX 模型文件分发
+  - `GET /` — 前端页面
+  - `/static/*` — 静态文件
+  - CORS 中间件（allow all）
+- [x] 静态前端（直接复用 `../static/index.html`）
+- [x] README.md 编写
+- [x] 等任务 2.5 修复后，用新 ONNX 模型做端到端真实图片验证
+
+### 技术要点
+
+- 文件结构：`server/{main.go, inference.go, preprocess.go, postprocess.go, handlers.go, go.mod, README.md}`
+- 本地 x86_64 交叉编译 ARM64：`CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build`
+- 运行参数：`--addr`（默认 :8000）、`--model`、`--static`
+- 环境变量：`ONNX_RUNTIME_LIB` 指定 onnxruntime 共享库路径（必需）
+- ONNX 模型输入：`"image"` (1,3,H,W) float32；输出：`"output"` (1,3,H,W) float32
+- 使用 `DynamicAdvancedSession`（H/W 动态），`sync.Mutex` 保护 session.Run()
 
 ---
 
@@ -100,5 +155,21 @@
 - **权衡**：固定 batch=1，不支持 batch 推理（推理服务通常也只处理单张图片）
 - **精度**：Max diff 6.3e-4，浮点精度范围内的可接受误差
 
+### 2026-04-15: ONNX 导出 Bug 分析
+
+- **发现**：ONNX 模型在真实图片上效果差
+- **Bug 1**：`RGBDecoder` 训练时只用 `mod_conv_1` + `mod_conv_2`（后者复用 7 次），`mod_conv_3..8` 从未参与训练。ONNX 导出错误地拷贝了 `mod_conv_3..8` 的随机未训练权重
+- **Bug 2**：`ModulationConvBlock` 原始实现用 5D view `(1,k,k,in_c,out_c)` 进行调制，5D view 改变了 in_c 维度的内存布局分组。ONNX 简化版在 4D `(out_c,in_c,k,k)` 上直接乘 code，数学不等价
+- **根因**：`bref.md` 中"实际上 mod_conv_3..8 的权重与 mod_conv_2 相同"的描述是错误的
+
+### 2026-04-15: Go 服务技术选型
+
+- **ONNX Runtime 库**：`github.com/yalue/onnxruntime_go` v1.27.0（CGo 绑定）
+- **图像处理**：`github.com/disintegration/imaging`（纯 Go，CatmullRom=BICUBIC, NearestNeighbor）
+- **Session 类型**：`DynamicAdvancedSession`（H/W 动态维度）
+- **交叉编译**：macOS x86_64 → arm64 直接 `CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build`
+- **远程机器**：M4 Mac，onnxruntime 共享库通过 `ONNX_RUNTIME_LIB` 环境变量指定
+
 ---
 创建日期: 2026年4月15日
+最后更新: 2026年4月15日

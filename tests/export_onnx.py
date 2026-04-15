@@ -110,16 +110,24 @@ class ONNXModulationConvBlock(nn.Module):
         # code: (1, in_c) — a slice of cell_size_code
         weight = self.weight * self.wscale          # (out_c, in_c, k, k)
 
-        # Modulate: scale each input channel by its style code
-        weight = weight * code.view(1, self.in_c, 1, 1)
+        # Replicate original 5D view modulation exactly.
+        # view(1, k, k, in_c, out_c) changes the element grouping along the
+        # in_c axis compared to the original 4D layout (out_c, in_c, k, k),
+        # so a simple 4D broadcast would multiply *different* elements by code.
+        _weight = weight.view(1, self.ksize, self.ksize, self.in_c, self.out_c)
+        _weight = _weight * code.view(1, 1, 1, self.in_c, 1)
 
-        # Demodulate: normalize per output channel
-        weight_norm = torch.sqrt(
-            torch.sum(weight ** 2, dim=[1, 2, 3], keepdim=True) + self.eps
+        # Demodulate (sum over dims 1,2,3 = k, k, in_c)
+        _weight_norm = torch.sqrt(
+            torch.sum(_weight ** 2, dim=[1, 2, 3]) + self.eps
         )
-        weight = weight / weight_norm
+        _weight = _weight / _weight_norm.view(1, 1, 1, 1, self.out_c)
 
-        # Standard conv2d (groups=1 for batch=1)
+        # Reshape back to 4D for conv2d (batch=1 simplification)
+        weight = _weight.permute(1, 2, 3, 0, 4).reshape(
+            self.ksize, self.ksize, self.in_c, 1 * self.out_c)
+        weight = weight.permute(3, 2, 0, 1)          # (out_c, in_c, k, k)
+
         x = F.conv2d(x, weight=weight, bias=None,
                       stride=self.stride, padding=self.padding)
         x = x + self.bias.view(1, -1, 1, 1)
@@ -134,14 +142,15 @@ class ONNXRGBDecoder(nn.Module):
         super().__init__()
         self.mod_conv_1 = ONNXModulationConvBlock(orig.mod_conv_1)
         self.mod_conv_2 = ONNXModulationConvBlock(orig.mod_conv_2)
-        # mod_conv_3..8 share structure with mod_conv_2 (same weight shape)
-        # but they have separate weights in the original model
-        self.mod_conv_3 = ONNXModulationConvBlock(orig.mod_conv_3)
-        self.mod_conv_4 = ONNXModulationConvBlock(orig.mod_conv_4)
-        self.mod_conv_5 = ONNXModulationConvBlock(orig.mod_conv_5)
-        self.mod_conv_6 = ONNXModulationConvBlock(orig.mod_conv_6)
-        self.mod_conv_7 = ONNXModulationConvBlock(orig.mod_conv_7)
-        self.mod_conv_8 = ONNXModulationConvBlock(orig.mod_conv_8)
+        # mod_conv_3..8: original RGBDecoder.forward reuses mod_conv_2 for all
+        # subsequent calls (mod_conv_3..8 exist in __init__ but are never used
+        # in forward — they hold random untrained weights)
+        self.mod_conv_3 = ONNXModulationConvBlock(orig.mod_conv_2)
+        self.mod_conv_4 = ONNXModulationConvBlock(orig.mod_conv_2)
+        self.mod_conv_5 = ONNXModulationConvBlock(orig.mod_conv_2)
+        self.mod_conv_6 = ONNXModulationConvBlock(orig.mod_conv_2)
+        self.mod_conv_7 = ONNXModulationConvBlock(orig.mod_conv_2)
+        self.mod_conv_8 = ONNXModulationConvBlock(orig.mod_conv_2)
 
         self.upsample_block1 = orig.upsample_block1
         self.conv_1 = orig.conv_1
