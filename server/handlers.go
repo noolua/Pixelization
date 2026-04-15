@@ -11,6 +11,8 @@ import (
 	"strconv"
 
 	ort "github.com/yalue/onnxruntime_go"
+
+	"github.com/disintegration/imaging"
 )
 
 // RegisterHandlers binds all HTTP routes to the mux.
@@ -26,6 +28,9 @@ func RegisterHandlers(mux *http.ServeMux, engine *InferenceEngine, staticDir str
 
 	// POST /pixelize
 	mux.HandleFunc("/pixelize", handlePixelize(engine))
+
+	// POST /optimize-colors
+	mux.HandleFunc("/optimize-colors", handleOptimizeColors())
 
 	// GET /health
 	mux.HandleFunc("/health", handleHealth(engine))
@@ -111,6 +116,56 @@ func handlePixelize(engine *InferenceEngine) http.HandlerFunc {
 	}
 }
 
+func handleOptimizeColors() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"detail": "failed to parse form"})
+			return
+		}
+
+		file, _, err := r.FormFile("image")
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"detail": "missing image field"})
+			return
+		}
+		defer file.Close()
+
+		img, _, err := image.Decode(file)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"detail": "invalid image file"})
+			return
+		}
+
+		// Get target_colors (default 32, range 2-256)
+		targetColors := 32
+		if v := r.FormValue("target_colors"); v != "" {
+			targetColors, err = strconv.Atoi(v)
+			if err != nil || targetColors < 2 || targetColors > 256 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"detail": "target_colors must be between 2 and 256"})
+				return
+			}
+		}
+
+		// Convert to NRGBA for pixel access
+		nrgba := toNRGBA(img)
+
+		pngBytes, err := KMeansOptimize(nrgba, targetColors)
+		if err != nil {
+			log.Printf("K-Means optimize error: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "color optimization failed"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(pngBytes)
+	}
+}
+
 func handleHealth(engine *InferenceEngine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -139,4 +194,9 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
+}
+
+// toNRGBA converts any image.Image to *image.NRGBA.
+func toNRGBA(img image.Image) *image.NRGBA {
+	return imaging.Clone(img)
 }
