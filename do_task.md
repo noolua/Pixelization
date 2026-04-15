@@ -1,132 +1,104 @@
-# 像素化 Web 服务开发任务
+# Pixelization 项目任务跟踪
 
 ## 目标
 
-基于现有的 `test_pro.py`，创建一个简化的 Web 服务，支持通过 HTTP 接收前端上传的 PNG 图像，根据 cell 参数生成像素化图像并返回。
-
-## 功能需求
-
-### 后端
-1. **HTTP 服务**：接收前端上传的 PNG 图像
-2. **参数处理**：根据页面选择的 cell 参数（2-8）进行像素化
-3. **图像返回**：返回生成的像素化图像
-
-### 前端
-1. **图像上传**：支持拖拽或点击上传 PNG 图像
-2. **参数选择**：cell 参数选择器（2-8）
-3. **结果展示**：原图与像素化后的图片对比显示
-
-## 实现方案
-
-### 骨架优先原则
-
-**第一阶段：骨架（最小可行实现）**
-
-#### 后端（FastAPI）
-- 端点：`POST /pixelize`
-- 接收：`multipart/form-data` (image + cell_size)
-- 返回：`image/png`
-- 复用：`test_pro.py` 中的 `Model` 类和 `pixelize` 方法
-
-#### 前端（纯 HTML + JS）
-- 单文件 `index.html`
-- 原生 Fetch API
-- 并排对比展示
-
-**第二阶段：血肉**
-- 错误处理（文件格式、大小限制）
-- 进度提示
-- 日志记录
-
-**第三阶段：皮肤**
-- 样式美化
-- 性能优化（缓存模型）
-- 部署配置
-
-## 技术选型
-
-| 组件 | 技术方案 | 理由 |
-|------|----------|------|
-| 后端框架 | FastAPI | 轻量、原生异步支持、自动文档 |
-| 模型复用 | 直接导入 `test_pro.py` 的 `Model` 类 | 最小代码修改 |
-| 前端 | HTML + Vanilla JS | 无构建依赖，快速验证 |
-| 图像传输 | Base64 或 multipart | 兼容性好 |
-
-## 目录结构
-
-```
-Pixelization/
-├── api.py              # 新增：FastAPI 服务入口
-├── static/
-│   └── index.html      # 新增：前端页面
-├── test_pro.py         # 复用：模型加载和推理
-├── models/             # 现有模型
-└── checkpoints/        # 现有权重
-```
-
-## 实现步骤
-
-### Step 1: 后端服务骨架
-1. 创建 `api.py`
-2. 导入 `test_pro.py` 的 `Model` 类
-3. 实现 `/pixelize` POST 端点
-4. 本地测试：curl 验证
-
-### Step 2: 前端页面骨架
-1. 创建 `static/index.html`
-2. 实现文件上传
-3. 实现 fetch 调用 `/pixelize`
-4. 实现图片对比展示
-
-### Step 3: 联调
-1. 本地启动服务
-2. 浏览器访问测试
-3. 修复问题
-
-### Step 4: 增强功能
-1. 错误处理
-2. 加载状态
-3. 参数范围验证
-
-## 关键接口定义
-
-### POST /pixelize
-
-**请求**
-```
-Content-Type: multipart/form-data
-
-image: file (PNG)
-cell_size: int (2-8)
-```
-
-**响应**
-```
-Content-Type: image/png
-
-<binary image data>
-```
-
-**错误**
-```
-Content-Type: application/json
-
-{"error": "error message"}
-```
-
-## 注意事项
-
-1. **模型加载优化**：服务启动时加载模型，避免每次请求重新加载
-2. **设备选择**：沿用 `test_pro.py` 的 MPS/CPU 自动检测
-3. **路径处理**：注意模型路径 `./checkpoints/demo/` 和 `./alias_net.pth`
-4. **临时文件**：处理完成后清理临时图像文件
-
-## 验收标准
-
-- [ ] 上传 PNG 图片成功返回像素化结果
-- [ ] cell 参数正确影响像素化程度
-- [ ] 前端正确展示原图与结果对比
-- [ ] 错误情况有友好提示
+将像素化程序打包为一个目录即可运行的服务，支持 MPS/CPU/GPU，无需安装 Python。
+当前选定方案：**PyTorch → ONNX → Go + ONNX Runtime**。
 
 ---
-创建日期: 2026年4月12日
+
+## 任务 1：ONNX 模型导出
+
+**状态：已完成**
+
+- [x] 创建 `tests/export_onnx.py` — 导出脚本
+- [x] 创建 `tests/verify_onnx.py` — 验证脚本
+- [x] 解决 `ModulationConvBlock` 动态权重 reshape 不兼容 ONNX 的问题
+  - 为 batch=1 重写了 `ONNXModulationConvBlock`，数学上完全等价
+  - `ONNXRGBDecoder` 逐个复制原始权重
+- [x] 使用 legacy trace exporter (`dynamo=False`)，固定 batch=1
+- [x] 导出成功，模型路径：`tests/onnx/pixelization.onnx`
+
+### 验证结果
+
+| 测试用例 | Max Diff | Mean Diff | 结论 |
+|---------|----------|-----------|------|
+| Random 256x256 | 6.3e-4 | 1.0e-4 | ACCEPTABLE |
+
+---
+
+## 任务 2：多尺寸 & 性能测试
+
+**状态：已完成**
+
+- [x] 测试不同分辨率（128x128, 512x512, 1024x1024, 非正方形）的 dynamic axes
+- [x] PyTorch vs ONNX Runtime 推理速度对比（CPU）
+- [x] 测试 ONNX Runtime CUDA EP（NVIDIA GPU）— 不可用（Mac 环境）
+- [x] 测试 ONNX Runtime CoreML EP（macOS Apple Silicon）
+
+### 测试结果
+
+**正确性**（PyTorch vs ONNX Runtime，random input）：
+
+| 分辨率 | Max Diff | Mean Diff | 状态 |
+|--------|----------|-----------|------|
+| 128x128 | 1.34e-04 | 1.42e-05 | PASS |
+| 256x256 | 6.51e-04 | 8.27e-05 | PASS |
+| 512x512 | 3.24e-03 | 3.98e-04 | 数值差异 |
+| 1024x1024 | 3.82e-02 | 2.20e-03 | 数值差异 |
+| 320x480 | 1.80e-03 | 2.65e-04 | 数值差异 |
+| 640x360 | 2.51e-03 | 3.73e-04 | 数值差异 |
+
+- 大尺寸有数值差异，但**视觉质量测试通过**（真实图片 ONNX 输出效果良好）
+
+**速度**（512x512，CPU）：
+
+| 运行时 | 耗时 | 备注 |
+|--------|------|------|
+| PyTorch CPU | 2361ms | 基线 |
+| ONNX Runtime CPU | 2388ms | 无加速 |
+| ONNX Runtime CoreML | **746ms** | **3.13x 加速** |
+
+- CoreML EP 覆盖 148/230 节点，剩余 fallback 到 CPU
+- 测试脚本：`tests/benchmark_onnx.py`
+
+---
+
+## 任务 3：Go 服务重写
+
+**状态：待开始**
+
+- [ ] 技术选型：`onnxruntime-go` 或 `go-onnxruntime`
+- [ ] 实现图像预处理（resize, normalize to [-1, 1], center crop to multiple of 4）
+- [ ] 实现图像后处理（反归一化, resize by cell_size）
+- [ ] 实现 HTTP API（参考 `api.py` 的接口设计）
+  - `POST /pixelize` — 接收图片 + cell_size 参数
+  - `GET /health` — 健康检查
+- [ ] 静态前端（移植 `static/index.html`）
+- [ ] 编译为单二进制 + ONNX 模型文件分发
+
+---
+
+## 任务 4：打包 & 分发
+
+**状态：待开始**
+
+- [ ] macOS（Apple Silicon）：单二进制 + pixelization.onnx，CoreML EP 加速
+- [ ] Linux（CUDA）：单二进制 + pixelization.onnx，CUDA EP 加速
+- [ ] Linux/macOS（CPU fallback）：纯 CPU 推理
+- [ ] 编写构建脚本（Makefile / GoReleaser）
+- [ ] 编写使用文档
+
+---
+
+## 关键技术决策记录
+
+### 2026-04-15: ONNX 导出方案
+
+- **问题**：`ModulationConvBlock` 使用 `F.conv2d(groups=batch)` + 动态 weight reshape，ONNX 无法处理
+- **解决**：为 batch=1 重写等价模块 `ONNXModulationConvBlock`，去掉动态 groups，改为标准 `groups=1` conv2d
+- **权衡**：固定 batch=1，不支持 batch 推理（推理服务通常也只处理单张图片）
+- **精度**：Max diff 6.3e-4，浮点精度范围内的可接受误差
+
+---
+创建日期: 2026年4月15日
