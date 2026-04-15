@@ -187,6 +187,34 @@
             cursor: not-allowed;
         }
 
+        .optimize-btn {
+            margin-top: 15px;
+            padding: 10px 24px;
+            background: #ff9500;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .optimize-btn:hover {
+            background: #e08600;
+        }
+
+        .optimize-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .color-info {
+            margin-top: 8px;
+            font-size: 13px;
+            color: #888;
+        }
+
         .loading {
             display: none;
             text-align: center;
@@ -256,6 +284,11 @@
                         <option value="8">8 (强烈)</option>
                     </select>
                 </div>
+                <div class="control-group">
+                    <label for="targetColors">目标颜色数:</label>
+                    <input type="number" id="targetColors" value="32" min="2" max="256"
+                           style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;width:80px;">
+                </div>
                 <button id="processBtn" disabled>处理图像</button>
             </div>
 
@@ -276,8 +309,18 @@
                 <div class="image-box">
                     <h3>像素化结果</h3>
                     <img id="resultImage" src="" alt="像素化结果">
+                    <p class="color-info" id="colorInfo"></p>
                     <div style="text-align: center;">
+                        <button id="optimizeBtn" class="optimize-btn" disabled>颜色优化</button>
                         <button id="downloadBtn" class="download-btn">下载原始尺寸</button>
+                    </div>
+                </div>
+                <div class="image-box" id="optimizedBox" style="display:none;">
+                    <h3>颜色优化结果</h3>
+                    <img id="optimizedImage" src="" alt="颜色优化结果">
+                    <p class="color-info" id="optimizedColorInfo"></p>
+                    <div style="text-align: center;">
+                        <button id="downloadOptimizedBtn" class="download-btn">下载优化图像</button>
                     </div>
                 </div>
             </div>
@@ -288,6 +331,7 @@
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
         const cellSize = document.getElementById('cellSize');
+        const targetColors = document.getElementById('targetColors');
         const processBtn = document.getElementById('processBtn');
         const resultSection = document.getElementById('resultSection');
         const previewImg = document.getElementById('previewImg');
@@ -296,8 +340,15 @@
         const loading = document.getElementById('loading');
         const error = document.getElementById('error');
         const downloadBtn = document.getElementById('downloadBtn');
+        const optimizeBtn = document.getElementById('optimizeBtn');
+        const optimizedBox = document.getElementById('optimizedBox');
+        const optimizedImage = document.getElementById('optimizedImage');
+        const downloadOptimizedBtn = document.getElementById('downloadOptimizedBtn');
+        const colorInfo = document.getElementById('colorInfo');
+        const optimizedColorInfo = document.getElementById('optimizedColorInfo');
 
         let selectedFile = null;
+        let pixelatedBlob = null;
 
         // 点击上传区域触发文件选择
         uploadArea.addEventListener('click', () => {
@@ -377,9 +428,26 @@
                 }
 
                 const blob = await response.blob();
+                pixelatedBlob = blob;
                 const resultUrl = URL.createObjectURL(blob);
                 resultImage.src = resultUrl;
                 resultSection.classList.add('show');
+
+                // 计算并显示颜色数
+                const imgEl = new Image();
+                imgEl.onload = () => {
+                    const colorCount = countColors(imgEl);
+                    colorInfo.textContent = `当前颜色数: ${colorCount}`;
+                    const target = parseInt(targetColors.value);
+                    optimizeBtn.disabled = colorCount <= target;
+                    if (colorCount <= target) {
+                        colorInfo.textContent += ` (已满足目标 ${target})`;
+                    }
+                };
+                imgEl.src = resultUrl;
+
+                // 隐藏之前的优化结果
+                optimizedBox.style.display = 'none';
 
             } catch (err) {
                 showError(err.message);
@@ -429,6 +497,82 @@
                 downloadBtn.textContent = originalText;
                 downloadBtn.disabled = false;
             }
+        });
+
+        // 统计图像颜色数
+        function countColors(imgEl) {
+            const canvas = document.createElement('canvas');
+            canvas.width = imgEl.naturalWidth;
+            canvas.height = imgEl.naturalHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(imgEl, 0, 0);
+            const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            const colors = new Set();
+            for (let i = 0; i < data.length; i += 4) {
+                colors.add((data[i] << 16) | (data[i+1] << 8) | data[i+2]);
+            }
+            return colors.size;
+        }
+
+        // 颜色优化
+        optimizeBtn.addEventListener('click', async () => {
+            if (!pixelatedBlob) return;
+
+            const target = parseInt(targetColors.value);
+            if (target < 2 || target > 256) {
+                showError('目标颜色数必须在 2-256 之间');
+                return;
+            }
+
+            hideError();
+            optimizeBtn.disabled = true;
+            optimizeBtn.textContent = '优化中...';
+
+            const formData = new FormData();
+            formData.append('image', pixelatedBlob, 'pixelated.png');
+            formData.append('target_colors', target);
+
+            try {
+                const response = await fetch('/optimize-colors', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || '优化失败');
+                }
+
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                optimizedImage.src = url;
+                optimizedBox.style.display = 'block';
+
+                // 统计优化后的颜色数
+                const imgEl = new Image();
+                imgEl.onload = () => {
+                    const colorCount = countColors(imgEl);
+                    optimizedColorInfo.textContent = `优化后颜色数: ${colorCount} (目标: ${target})`;
+                };
+                imgEl.src = url;
+
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                optimizeBtn.textContent = '颜色优化';
+                optimizeBtn.disabled = false;
+            }
+        });
+
+        // 下载优化图像
+        downloadOptimizedBtn.addEventListener('click', () => {
+            if (!optimizedImage.src) return;
+            const a = document.createElement('a');
+            a.href = optimizedImage.src;
+            a.download = `optimized_${targetColors.value}colors_${selectedFile ? selectedFile.name : 'image.png'}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         });
 
         function showError(message) {
