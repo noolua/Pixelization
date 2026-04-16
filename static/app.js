@@ -110,8 +110,58 @@ function resetFrom(state, pipeIndex) {
     if (state.executedUpTo >= pipeIndex) state.executedUpTo = pipeIndex - 1;
 }
 
+// --- Batch 数据模型 ---
+// Batch 配置格式（Web/Python 共享）:
+// { name: string, tile_size: number, configs: [{ name: string, pipeline: [{ type, params }] }] }
+
+function createBatch(name, tileSize) {
+    return { name: name || '未命名 Batch', tile_size: tileSize || 16, configs: [] };
+}
+
+function addBatchConfig(batch, name, pipelineSteps) {
+    const config = {
+        name: name || ('配置 ' + (batch.configs.length + 1)),
+        pipeline: pipelineSteps || []
+    };
+    batch.configs.push(config);
+    return config;
+}
+
+function removeBatchConfig(batch, index) {
+    if (index >= 0 && index < batch.configs.length) batch.configs.splice(index, 1);
+}
+
+function moveBatchConfig(batch, from, to) {
+    if (from === to || from < 0 || from >= batch.configs.length) return;
+    const [item] = batch.configs.splice(from, 1);
+    const adj = from < to ? to - 1 : to;
+    batch.configs.splice(adj, 0, item);
+}
+
+function updateBatchConfig(batch, index, updates) {
+    if (index < 0 || index >= batch.configs.length) return;
+    const cfg = batch.configs[index];
+    if (updates.name !== undefined) cfg.name = updates.name;
+    if (updates.pipeline !== undefined) cfg.pipeline = updates.pipeline;
+}
+
+// 从管线配置生成 pipeline 步骤数组（用于 batch config）
+function pipelineToSteps(state) {
+    return state.pipes.map(p => ({ type: p.type, params: { ...p.params } }));
+}
+
+// 从 pipeline 步骤数组验证（确保所有 type 有效）
+function validatePipelineSteps(steps) {
+    if (!Array.isArray(steps)) return [];
+    return steps.filter(s => s.type && PIPE_REGISTRY[s.type]).map(s => ({
+        type: s.type,
+        params: { ...defaultParams(s.type), ...(s.params || {}) }
+    }));
+}
+
 // localStorage
 const STORAGE_KEY = 'pixelization_pipeline';
+const BATCHES_KEY = 'pixelization_batches';
 
 function serializePipeline(state) {
     return JSON.stringify({ pipes: state.pipes.map(p => ({ type: p.type, params: p.params })) });
@@ -138,6 +188,37 @@ function loadPipeline() {
         if (json) return deserializePipeline(json);
     } catch (e) {}
     return createPipelineState(PIPELINE_PRESETS['default'].pipes);
+}
+
+// Batch 持久化
+function saveBatches(batches) {
+    try { localStorage.setItem(BATCHES_KEY, JSON.stringify(batches)); } catch (e) {}
+}
+
+function loadBatches() {
+    try {
+        const json = localStorage.getItem(BATCHES_KEY);
+        if (json) {
+            const data = JSON.parse(json);
+            if (Array.isArray(data)) return data;
+        }
+    } catch (e) {}
+    return [];
+}
+
+function validateBatchJSON(data) {
+    if (!data || typeof data !== 'object') return null;
+    if (!data.name || typeof data.name !== 'string') return null;
+    if (typeof data.tile_size !== 'number' || data.tile_size < 1) return null;
+    if (!Array.isArray(data.configs)) return null;
+    for (const cfg of data.configs) {
+        if (!cfg.name || typeof cfg.name !== 'string') return null;
+        if (!Array.isArray(cfg.pipeline)) return null;
+        for (const step of cfg.pipeline) {
+            if (!step.type || !PIPE_REGISTRY[step.type]) return null;
+        }
+    }
+    return data;
 }
 
 // ============================================================
@@ -216,6 +297,7 @@ function onFileSelected() {
         for (const p of pipelineState.pipes) pipelineState.blobs[p.id] = null;
         pipelineState.executedUpTo = -1;
         renderPipeline();
+        renderBatchPanel();
         hideError();
     };
     reader.readAsDataURL(selectedFile);
@@ -754,8 +836,608 @@ $('resetBtn').addEventListener('click', () => {
 });
 
 // ============================================================
+// Batch 导入/导出
+// ============================================================
+
+function exportBatch(batch) {
+    const json = JSON.stringify(batch, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    triggerDownload(blob, (batch.name || 'batch') + '.json');
+}
+
+function importBatchFromFile(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => {
+            try {
+                const data = JSON.parse(e.target.result);
+                const batch = validateBatchJSON(data);
+                if (!batch) throw new Error('JSON 格式不符合 batch 配置规范');
+                // 补全 params 缺省值
+                for (const cfg of batch.configs) {
+                    cfg.pipeline = validatePipelineSteps(cfg.pipeline);
+                }
+                resolve(batch);
+            } catch (err) {
+                reject(err);
+            }
+        };
+        reader.onerror = () => reject(new Error('文件读取失败'));
+        reader.readAsText(file);
+    });
+}
+
+// 全局 batches 列表
+let batches = loadBatches();
+
+// ============================================================
+// Batch 面板
+// ============================================================
+
+let currentBatchIndex = -1;
+let expandedConfigIdx = -1;
+let batchExecuting = false;
+let batchResults = [];
+let collageZoom = 1;
+
+const batchSelect = $('batchSelect');
+const batchNameEl = $('batchName');
+const batchTileSizeEl = $('batchTileSize');
+const batchMetaEl = $('batchMeta');
+const batchToolbarEl = $('batchToolbar');
+const batchConfigsEl = $('batchConfigs');
+const batchPreviewEl = $('batchPreview');
+const collageCanvasEl = $('collageCanvas');
+
+function getCurrentBatch() {
+    return (currentBatchIndex >= 0 && currentBatchIndex < batches.length) ? batches[currentBatchIndex] : null;
+}
+
+function pipelineSummary(pipeline) {
+    if (!pipeline || pipeline.length === 0) return '(空)';
+    return pipeline.map(s => {
+        const reg = PIPE_REGISTRY[s.type];
+        if (!reg) return s.type;
+        const vals = Object.values(s.params).join(', ');
+        return reg.label + (vals ? '(' + vals + ')' : '');
+    }).join(' → ');
+}
+
+function renderBatchPanel() {
+    batchSelect.innerHTML = '';
+    if (batches.length === 0) {
+        const opt = document.createElement('option');
+        opt.textContent = '(无 Batch)';
+        batchSelect.appendChild(opt);
+        currentBatchIndex = -1;
+    } else {
+        batches.forEach((b, i) => {
+            const opt = document.createElement('option');
+            opt.value = i; opt.textContent = b.name;
+            opt.selected = i === currentBatchIndex;
+            batchSelect.appendChild(opt);
+        });
+        if (currentBatchIndex < 0 || currentBatchIndex >= batches.length) currentBatchIndex = 0;
+        batchSelect.value = String(currentBatchIndex);
+    }
+    const batch = getCurrentBatch();
+    batchMetaEl.style.display = batch ? '' : 'none';
+    batchToolbarEl.style.display = batch ? '' : 'none';
+    if (!batch) {
+        batchConfigsEl.innerHTML = '<p class="batch-empty">点击「新建」创建一个 Batch 配置</p>';
+        batchPreviewEl.style.display = 'none';
+        return;
+    }
+    batchNameEl.value = batch.name;
+    batchTileSizeEl.value = batch.tile_size;
+    $('executeBatchBtn').disabled = !selectedFile || batchExecuting;
+    renderBatchConfigs();
+}
+
+function renderBatchConfigs() {
+    const batch = getCurrentBatch();
+    if (!batch) return;
+    batchConfigsEl.innerHTML = '';
+    if (batch.configs.length === 0) {
+        batchConfigsEl.innerHTML = '<p class="batch-empty">点击「+ 添加配置」添加处理配置</p>';
+        return;
+    }
+    batch.configs.forEach((cfg, idx) => {
+        if (idx > 0) {
+            const conn = document.createElement('div');
+            conn.className = 'pipe-connector';
+            batchConfigsEl.appendChild(conn);
+        }
+        batchConfigsEl.appendChild(createBatchConfigCard(cfg, idx));
+    });
+}
+
+function createBatchConfigCard(config, index) {
+    const expanded = expandedConfigIdx === index;
+    const card = document.createElement('div');
+    card.className = 'batch-config-card' + (expanded ? ' expanded' : '');
+    card.dataset.configIndex = index;
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'batch-config-header';
+    header.innerHTML = `
+        <span class="drag-handle" draggable="true">\u22EE\u22EE</span>
+        <span class="config-idx">${index + 1}.</span>
+        <span class="config-name">${config.name}</span>
+        <span class="config-summary">${pipelineSummary(config.pipeline)}</span>
+        <button class="delete-btn" title="删除">\u00D7</button>
+    `;
+    header.addEventListener('click', e => {
+        if (e.target.classList.contains('drag-handle') || e.target.classList.contains('delete-btn')) return;
+        expandedConfigIdx = expandedConfigIdx === index ? -1 : index;
+        renderBatchConfigs();
+    });
+    header.querySelector('.delete-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        const batch = getCurrentBatch();
+        removeBatchConfig(batch, index);
+        if (expandedConfigIdx === index) expandedConfigIdx = -1;
+        else if (expandedConfigIdx > index) expandedConfigIdx--;
+        saveBatches(batches);
+        renderBatchConfigs();
+    });
+    card.appendChild(header);
+    setupBatchConfigDrag(card, index);
+
+    if (expanded) {
+        const body = document.createElement('div');
+        body.className = 'batch-config-body';
+        // Name edit
+        const nameRow = document.createElement('div');
+        nameRow.className = 'config-name-edit';
+        const nameLabel = document.createElement('label');
+        nameLabel.textContent = '名称:';
+        nameRow.appendChild(nameLabel);
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text'; nameInput.value = config.name; nameInput.maxLength = 30;
+        nameInput.addEventListener('change', () => {
+            config.name = nameInput.value.trim() || ('配置 ' + (index + 1));
+            saveBatches(batches);
+            renderBatchConfigs();
+        });
+        nameRow.appendChild(nameInput);
+        body.appendChild(nameRow);
+        // Steps
+        const stepsDiv = document.createElement('div');
+        stepsDiv.className = 'config-steps';
+        config.pipeline.forEach((step, si) => stepsDiv.appendChild(createBatchStepRow(config, index, step, si)));
+        body.appendChild(stepsDiv);
+        // Add step dropdown
+        const addRow = document.createElement('div');
+        addRow.className = 'add-step-row';
+        const dd = document.createElement('div');
+        dd.className = 'dropdown';
+        const ddBtn = document.createElement('button');
+        ddBtn.className = 'toolbar-btn'; ddBtn.textContent = '+ 添加步骤';
+        const ddMenu = document.createElement('div');
+        ddMenu.className = 'dropdown-menu';
+        for (const [type, reg] of Object.entries(PIPE_REGISTRY)) {
+            const item = document.createElement('button');
+            item.className = 'dropdown-item'; item.textContent = reg.label;
+            item.addEventListener('mousedown', ev => {
+                ev.preventDefault(); ev.stopPropagation();
+                config.pipeline.push({ type, params: defaultParams(type) });
+                saveBatches(batches);
+                renderBatchConfigs();
+            });
+            ddMenu.appendChild(item);
+        }
+        ddBtn.addEventListener('mousedown', ev => {
+            ev.preventDefault(); ev.stopPropagation();
+            closeAllDropdowns();
+            ddMenu.classList.toggle('show');
+        });
+        dd.appendChild(ddBtn); dd.appendChild(ddMenu);
+        addRow.appendChild(dd);
+        body.appendChild(addRow);
+        card.appendChild(body);
+    }
+    return card;
+}
+
+function createBatchStepRow(config, configIdx, step, stepIdx) {
+    const reg = PIPE_REGISTRY[step.type];
+    const row = document.createElement('div');
+    row.className = 'config-step-row';
+    const typeLabel = document.createElement('span');
+    typeLabel.className = 'step-type';
+    typeLabel.textContent = reg ? reg.label : step.type;
+    row.appendChild(typeLabel);
+
+    const paramsEl = document.createElement('span');
+    paramsEl.className = 'step-params';
+    const doSave = () => { saveBatches(batches); updateConfigSummary(configIdx); };
+    for (const pd of (reg ? reg.params : [])) {
+        paramsEl.appendChild(createBatchParamCtrl(pd, step, doSave));
+    }
+    row.appendChild(paramsEl);
+
+    // Move up/down
+    const mkMove = (text, delta) => {
+        const b = document.createElement('button');
+        b.className = 'step-move'; b.textContent = text;
+        const target = stepIdx + delta;
+        b.disabled = target < 0 || target >= config.pipeline.length;
+        b.addEventListener('click', () => {
+            [config.pipeline[stepIdx], config.pipeline[target]] = [config.pipeline[target], config.pipeline[stepIdx]];
+            saveBatches(batches);
+            renderBatchConfigs();
+        });
+        return b;
+    };
+    row.appendChild(mkMove('\u2191', -1));
+    row.appendChild(mkMove('\u2193', 1));
+
+    const del = document.createElement('button');
+    del.className = 'delete-btn'; del.textContent = '\u00D7';
+    del.addEventListener('click', () => {
+        config.pipeline.splice(stepIdx, 1);
+        saveBatches(batches);
+        renderBatchConfigs();
+    });
+    row.appendChild(del);
+    return row;
+}
+
+function createBatchParamCtrl(pd, step, onSave) {
+    const g = document.createElement('span');
+    g.className = 'param-group';
+    const label = document.createElement('label');
+    label.textContent = pd.label + ':';
+    g.appendChild(label);
+
+    if (pd.type === 'select') {
+        const sel = document.createElement('select');
+        for (const o of pd.options) {
+            const opt = document.createElement('option');
+            opt.value = o.value; opt.textContent = o.label;
+            if (String(step.params[pd.key]) === String(o.value)) opt.selected = true;
+            sel.appendChild(opt);
+        }
+        sel.addEventListener('change', () => { step.params[pd.key] = parseInt(sel.value); onSave(); });
+        g.appendChild(sel);
+    } else if (pd.type === 'range') {
+        const input = document.createElement('input');
+        input.type = 'range'; input.min = pd.min; input.max = pd.max; input.step = pd.step;
+        input.value = step.params[pd.key];
+        const val = document.createElement('span');
+        val.className = 'range-val'; val.textContent = parseFloat(input.value).toFixed(1);
+        input.addEventListener('input', () => val.textContent = parseFloat(input.value).toFixed(1));
+        input.addEventListener('change', () => { step.params[pd.key] = parseFloat(input.value); onSave(); });
+        g.appendChild(input); g.appendChild(val);
+    } else if (pd.type === 'number') {
+        const input = document.createElement('input');
+        input.type = 'number'; input.min = pd.min; input.max = pd.max;
+        input.value = step.params[pd.key]; input.style.width = '70px';
+        input.addEventListener('change', () => { step.params[pd.key] = parseInt(input.value); onSave(); });
+        g.appendChild(input);
+    } else if (pd.type === 'color') {
+        const input = document.createElement('input');
+        input.type = 'color'; input.value = step.params[pd.key];
+        input.addEventListener('change', () => { step.params[pd.key] = input.value; onSave(); });
+        g.appendChild(input);
+    }
+    return g;
+}
+
+function updateConfigSummary(configIdx) {
+    const batch = getCurrentBatch();
+    if (!batch || configIdx >= batch.configs.length) return;
+    const card = batchConfigsEl.querySelector('[data-config-index="' + configIdx + '"]');
+    if (!card) return;
+    const el = card.querySelector('.config-summary');
+    if (el) el.textContent = pipelineSummary(batch.configs[configIdx].pipeline);
+}
+
+// Batch config drag-and-drop
+function setupBatchConfigDrag(card, index) {
+    const handle = card.querySelector('.drag-handle');
+    handle.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('batch-config', String(index));
+        e.dataTransfer.effectAllowed = 'move';
+        requestAnimationFrame(() => card.classList.add('dragging'));
+    });
+    handle.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        document.querySelectorAll('.batch-config-card').forEach(c => c.classList.remove('drag-over-top', 'drag-over-bottom'));
+    });
+    card.addEventListener('dragover', e => {
+        if (!e.dataTransfer.types.includes('batch-config')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const rect = card.getBoundingClientRect();
+        card.classList.remove('drag-over-top', 'drag-over-bottom');
+        card.classList.add(e.clientY < rect.top + rect.height / 2 ? 'drag-over-top' : 'drag-over-bottom');
+    });
+    card.addEventListener('dragleave', () => card.classList.remove('drag-over-top', 'drag-over-bottom'));
+    card.addEventListener('drop', e => {
+        e.preventDefault();
+        card.classList.remove('drag-over-top', 'drag-over-bottom');
+        if (!e.dataTransfer.types.includes('batch-config')) return;
+        const fromIdx = parseInt(e.dataTransfer.getData('batch-config'));
+        if (isNaN(fromIdx) || fromIdx === index) return;
+        const batch = getCurrentBatch();
+        const rect = card.getBoundingClientRect();
+        const toIdx = e.clientY >= rect.top + rect.height / 2 ? index + 1 : index;
+        moveBatchConfig(batch, fromIdx, toIdx);
+        if (expandedConfigIdx === fromIdx) expandedConfigIdx = fromIdx < toIdx ? toIdx - 1 : toIdx;
+        saveBatches(batches);
+        renderBatchConfigs();
+    });
+}
+
+// --- Batch toolbar ---
+function populateAddBatchConfigMenu() {
+    const menu = $('addBatchConfigMenu');
+    menu.innerHTML = '';
+    // From current pipeline
+    const fromCurrent = document.createElement('button');
+    fromCurrent.className = 'dropdown-item'; fromCurrent.textContent = '从当前管线';
+    fromCurrent.addEventListener('mousedown', e => {
+        e.preventDefault(); e.stopPropagation();
+        const batch = getCurrentBatch();
+        if (!batch) return;
+        addBatchConfig(batch, null, pipelineToSteps(pipelineState));
+        saveBatches(batches);
+        renderBatchConfigs();
+        closeAllDropdowns();
+    });
+    menu.appendChild(fromCurrent);
+    // Saved configs
+    const savedConfigs = loadSavedConfigs();
+    const names = Object.keys(savedConfigs);
+    if (names.length > 0) {
+        const sep = document.createElement('div');
+        sep.style.cssText = 'border-top:1px solid #f0f0f0;margin:4px 0;';
+        menu.appendChild(sep);
+        for (const name of names) {
+            const item = document.createElement('button');
+            item.className = 'dropdown-item'; item.textContent = name;
+            item.addEventListener('mousedown', e => {
+                e.preventDefault(); e.stopPropagation();
+                const batch = getCurrentBatch();
+                if (!batch) return;
+                addBatchConfig(batch, name, validatePipelineSteps(savedConfigs[name]));
+                saveBatches(batches);
+                renderBatchConfigs();
+                closeAllDropdowns();
+            });
+            menu.appendChild(item);
+        }
+    }
+    const sep2 = document.createElement('div');
+    sep2.style.cssText = 'border-top:1px solid #f0f0f0;margin:4px 0;';
+    menu.appendChild(sep2);
+    const empty = document.createElement('button');
+    empty.className = 'dropdown-item'; empty.textContent = '空白配置';
+    empty.addEventListener('mousedown', e => {
+        e.preventDefault(); e.stopPropagation();
+        const batch = getCurrentBatch();
+        if (!batch) return;
+        addBatchConfig(batch, null, []);
+        saveBatches(batches);
+        renderBatchConfigs();
+        closeAllDropdowns();
+    });
+    menu.appendChild(empty);
+}
+
+// --- Batch execution ---
+async function executeBatch() {
+    const batch = getCurrentBatch();
+    if (!batch || !selectedFile || batchExecuting) return;
+    batchExecuting = true;
+    hideError();
+    $('executeBatchBtn').disabled = true;
+    const results = [];
+    for (let i = 0; i < batch.configs.length; i++) {
+        const cfg = batch.configs[i];
+        try {
+            showLoading('Batch ' + (i + 1) + '/' + batch.configs.length + ': ' + cfg.name);
+            const blob = await executeBatchPipeline(cfg.pipeline);
+            const img = new Image();
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = () => reject(new Error('图像加载失败'));
+                img.src = URL.createObjectURL(blob);
+            });
+            results.push({ name: cfg.name, blob, img });
+        } catch (e) {
+            results.push({ name: cfg.name, error: e.message });
+        }
+    }
+    hideLoading();
+    batchExecuting = false;
+    batchResults = results;
+    $('executeBatchBtn').disabled = false;
+    const success = results.filter(r => !r.error);
+    if (success.length > 0) {
+        generateCollage(success, batch.tile_size);
+        batchPreviewEl.style.display = '';
+    }
+    if (results.some(r => r.error)) {
+        showError(results.filter(r => r.error).map(r => r.name + ': ' + r.error).join('; '));
+    }
+}
+
+async function executeBatchPipeline(pipeline) {
+    let currentBlob = selectedFile;
+    if (pipeline.length === 0) return currentBlob;
+    for (const step of pipeline) {
+        const reg = PIPE_REGISTRY[step.type];
+        if (!reg) throw new Error('未知步骤: ' + step.type);
+        const fd = new FormData();
+        fd.append('image', currentBlob, 'input.png');
+        for (const [k, v] of Object.entries(step.params)) fd.append(k, v);
+        const res = await fetch(reg.endpoint, { method: 'POST', body: fd });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ detail: '处理失败' }));
+            throw new Error(err.detail || '处理失败');
+        }
+        currentBlob = await res.blob();
+    }
+    return currentBlob;
+}
+
+// --- Tile collage ---
+function generateCollage(results, tileSize) {
+    const items = results.map(r => {
+        const gw = Math.ceil(r.img.naturalWidth / tileSize);
+        const gh = Math.ceil(r.img.naturalHeight / tileSize);
+        return { ...r, gw, gh };
+    }).sort((a, b) => (b.gw * b.gh) - (a.gw * a.gh));
+
+    if (items.length === 0) return;
+
+    // Greedy bin packing on tile grid
+    const occupied = new Set();
+    const ok = (x, y, gw, gh) => {
+        for (let dy = 0; dy < gh; dy++)
+            for (let dx = 0; dx < gw; dx++)
+                if (occupied.has((x + dx) + ',' + (y + dy))) return false;
+        return true;
+    };
+    const mark = (x, y, gw, gh) => {
+        for (let dy = 0; dy < gh; dy++)
+            for (let dx = 0; dx < gw; dx++)
+                occupied.add((x + dx) + ',' + (y + dy));
+    };
+
+    const totalCells = items.reduce((s, g) => s + g.gw * g.gh, 0);
+    const targetCols = Math.max(1, Math.ceil(Math.sqrt(totalCells)));
+    const positions = [];
+
+    for (const item of items) {
+        let placed = false;
+        for (let gy = 0; !placed; gy++) {
+            for (let gx = 0; gx <= targetCols; gx++) {
+                if (ok(gx, gy, item.gw, item.gh)) {
+                    mark(gx, gy, item.gw, item.gh);
+                    positions.push({ x: gx * tileSize, y: gy * tileSize, item });
+                    placed = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    let cw = 0, ch = 0;
+    for (const p of positions) {
+        cw = Math.max(cw, p.x + p.item.img.naturalWidth);
+        ch = Math.max(ch, p.y + p.item.img.naturalHeight);
+    }
+
+    collageCanvasEl.width = cw;
+    collageCanvasEl.height = ch;
+    const ctx = collageCanvasEl.getContext('2d');
+    ctx.clearRect(0, 0, cw, ch);
+    for (const p of positions) ctx.drawImage(p.item.img, p.x, p.y);
+
+    collageZoom = 1;
+    $('collageZoomVal').textContent = '100%';
+    collageCanvasEl.style.width = cw + 'px';
+}
+
+// --- Batch event bindings ---
+batchSelect.addEventListener('change', () => {
+    currentBatchIndex = parseInt(batchSelect.value);
+    expandedConfigIdx = -1;
+    batchPreviewEl.style.display = 'none';
+    renderBatchPanel();
+});
+
+$('newBatchBtn').addEventListener('click', () => {
+    const batch = createBatch('Batch ' + (batches.length + 1), 16);
+    batches.push(batch);
+    currentBatchIndex = batches.length - 1;
+    expandedConfigIdx = -1;
+    saveBatches(batches);
+    renderBatchPanel();
+});
+
+$('deleteBatchBtn').addEventListener('click', () => {
+    if (batches.length === 0) return;
+    batches.splice(currentBatchIndex, 1);
+    if (currentBatchIndex >= batches.length) currentBatchIndex = batches.length - 1;
+    expandedConfigIdx = -1;
+    saveBatches(batches);
+    batchPreviewEl.style.display = 'none';
+    renderBatchPanel();
+});
+
+batchNameEl.addEventListener('change', () => {
+    const batch = getCurrentBatch();
+    if (!batch) return;
+    batch.name = batchNameEl.value.trim() || '未命名 Batch';
+    batchNameEl.value = batch.name;
+    saveBatches(batches);
+    batchSelect.options[currentBatchIndex].textContent = batch.name;
+});
+
+batchTileSizeEl.addEventListener('change', () => {
+    const batch = getCurrentBatch();
+    if (!batch) return;
+    batch.tile_size = Math.max(8, Math.min(64, parseInt(batchTileSizeEl.value) || 16));
+    batchTileSizeEl.value = batch.tile_size;
+    saveBatches(batches);
+});
+
+$('addBatchConfigBtn').addEventListener('mousedown', e => {
+    e.preventDefault(); e.stopPropagation();
+    populateAddBatchConfigMenu();
+    toggleDropdown('addBatchConfigMenu');
+});
+
+$('importBatchBtn').addEventListener('click', () => $('importBatchFileInput').click());
+$('importBatchFileInput').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+        const batch = await importBatchFromFile(file);
+        batches.push(batch);
+        currentBatchIndex = batches.length - 1;
+        saveBatches(batches);
+        renderBatchPanel();
+        hideError();
+    } catch (err) { showError('导入失败: ' + err.message); }
+    e.target.value = '';
+});
+
+$('exportBatchBtn').addEventListener('click', () => {
+    const batch = getCurrentBatch();
+    if (!batch) { showError('请先选择一个 Batch'); return; }
+    exportBatch(batch);
+});
+
+$('executeBatchBtn').addEventListener('click', executeBatch);
+
+$('downloadCollageBtn').addEventListener('click', () => {
+    collageCanvasEl.toBlob(blob => {
+        triggerDownload(blob, (getCurrentBatch()?.name || 'collage') + '_tiled.png');
+    }, 'image/png');
+});
+
+// Collage zoom
+const doCollageZoom = dir => {
+    if (dir === 0) collageZoom = 1;
+    else { collageZoom *= (dir > 0 ? 2 : 0.5); collageZoom = Math.max(0.25, Math.min(collageZoom, 16)); }
+    collageCanvasEl.style.width = (collageCanvasEl.width * collageZoom) + 'px';
+    $('collageZoomVal').textContent = Math.round(collageZoom * 100) + '%';
+};
+$('collageZoomIn').addEventListener('click', () => doCollageZoom(1));
+$('collageZoomOut').addEventListener('click', () => doCollageZoom(-1));
+$('collageZoomReset').addEventListener('click', () => doCollageZoom(0));
+
+// ============================================================
 // 初始化
 // ============================================================
 
 populateMenus();
 renderPipeline();
+renderBatchPanel();

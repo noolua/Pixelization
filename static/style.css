@@ -175,3 +175,84 @@ input[type="file"] { display: none; }
     .param-group { width: 100%; }
     .param-group input[type="range"] { flex: 1; }
 }
+
+/* Batch Section */
+.batch-section { background: white; border-radius: 12px; padding: 30px;
+                 box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 20px; }
+.section-header { display: flex; align-items: center; justify-content: space-between;
+                  margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+.section-header h2 { font-size: 18px; color: #333; }
+.batch-selector { display: flex; gap: 8px; align-items: center; }
+.batch-selector select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px;
+                         font-size: 13px; min-width: 160px; outline: none; }
+.batch-meta { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.batch-meta input[type="text"] { font-size: 16px; font-weight: 500; border: 1px solid transparent;
+                                 border-radius: 4px; padding: 4px 8px; outline: none; flex: 1; max-width: 300px; }
+.batch-meta input[type="text"]:hover { border-color: #eee; }
+.batch-meta input[type="text"]:focus { border-color: #007aff; background: #fafafa; }
+.tile-label { font-size: 13px; color: #666; display: flex; align-items: center; gap: 6px; }
+.tile-label input { width: 60px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
+.batch-toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.batch-configs { display: flex; flex-direction: column; }
+
+/* Batch Config Card */
+.batch-config-card { border: 2px solid #e0e0e0; border-radius: 8px; background: white; transition: border-color 0.2s; }
+.batch-config-card.expanded { border-color: #007aff; }
+.batch-config-header { display: flex; align-items: center; padding: 10px 14px; cursor: pointer;
+                       gap: 8px; user-select: none; }
+.batch-config-header .drag-handle { cursor: grab; color: #ccc; font-size: 14px; letter-spacing: 2px; }
+.batch-config-header .drag-handle:active { cursor: grabbing; }
+.batch-config-header .config-idx { font-size: 13px; color: #999; min-width: 22px; }
+.batch-config-header .config-name { font-weight: 500; color: #333; }
+.batch-config-header .config-summary { font-size: 12px; color: #888; flex: 1; overflow: hidden;
+                                       text-overflow: ellipsis; white-space: nowrap; }
+.batch-config-header .delete-btn { background: none; border: none; color: #ccc;
+                                   font-size: 16px; cursor: pointer; padding: 0 4px; }
+.batch-config-header .delete-btn:hover { color: #ff3b30; }
+.batch-config-body { padding: 0 14px 14px; }
+
+/* Config name edit */
+.config-name-edit { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.config-name-edit label { font-size: 13px; color: #666; }
+.config-name-edit input { padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px;
+                          font-size: 13px; flex: 1; max-width: 200px; outline: none; }
+.config-name-edit input:focus { border-color: #007aff; }
+
+/* Config pipeline steps */
+.config-steps { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.config-step-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+                   background: #f9f9f9; border-radius: 6px; border: 1px solid #eee; flex-wrap: wrap; }
+.config-step-row .step-type { font-size: 13px; font-weight: 500; color: #333; min-width: 60px; }
+.config-step-row .step-params { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex: 1; }
+.step-move { background: none; border: 1px solid #ddd; border-radius: 3px; padding: 2px 6px;
+             cursor: pointer; font-size: 12px; color: #666; }
+.step-move:hover { background: #eee; }
+.step-move:disabled { opacity: 0.3; cursor: not-allowed; }
+.config-step-row .delete-btn { background: none; border: none; color: #ccc;
+                               font-size: 14px; cursor: pointer; padding: 0 4px; }
+.config-step-row .delete-btn:hover { color: #ff3b30; }
+.add-step-row { display: flex; justify-content: center; padding-top: 4px; }
+.batch-empty { text-align: center; color: #999; padding: 20px; font-size: 14px; }
+
+/* Batch config drag */
+.batch-config-card.dragging { opacity: 0.4; }
+.batch-config-card.drag-over-top { border-top: 3px solid #007aff; }
+.batch-config-card.drag-over-bottom { border-bottom: 3px solid #007aff; }
+
+/* Collage Preview */
+.batch-preview { margin-top: 16px; border-top: 1px solid #eee; padding-top: 16px; }
+.collage-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.collage-bar > span { font-weight: 500; color: #333; }
+.collage-viewport { overflow: auto; border: 1px solid #eee; border-radius: 8px; max-height: 500px;
+                    background: repeating-conic-gradient(#f0f0f0 0% 25%, white 0% 50%) 0 0 / 16px 16px; }
+.collage-viewport canvas { display: block; image-rendering: pixelated;
+                           image-rendering: -moz-crisp-edges; image-rendering: crisp-edges; }
+
+/* Responsive - Batch */
+@media (max-width: 767px) {
+    .batch-section { padding: 16px; }
+    .section-header { flex-direction: column; align-items: flex-start; }
+    .batch-meta { flex-direction: column; align-items: flex-start; }
+    .batch-toolbar { gap: 6px; }
+    .batch-config-header .config-summary { display: none; }
+}

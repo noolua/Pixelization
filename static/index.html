@@ -59,6 +59,48 @@
             </div>
             <div class="pipeline-flow" id="pipelineFlow"></div>
         </div>
+
+        <div class="batch-section" id="batchSection">
+            <div class="section-header">
+                <h2>Batch 批量配置</h2>
+                <div class="batch-selector">
+                    <select id="batchSelect"></select>
+                    <button class="toolbar-btn" id="newBatchBtn">新建</button>
+                    <button class="toolbar-btn danger" id="deleteBatchBtn">删除</button>
+                </div>
+            </div>
+            <div class="batch-meta" id="batchMeta">
+                <input type="text" id="batchName" placeholder="Batch 名称" maxlength="30">
+                <label class="tile-label">瓦片: <input type="number" id="batchTileSize" value="16" min="8" max="64"> px</label>
+            </div>
+            <div class="batch-toolbar" id="batchToolbar">
+                <div class="dropdown">
+                    <button class="toolbar-btn" id="addBatchConfigBtn">+ 添加配置</button>
+                    <div class="dropdown-menu" id="addBatchConfigMenu"></div>
+                </div>
+                <button class="toolbar-btn" id="importBatchBtn">导入</button>
+                <button class="toolbar-btn" id="exportBatchBtn">导出 JSON</button>
+                <input type="file" id="importBatchFileInput" accept=".json" style="display:none;">
+                <div style="flex:1;"></div>
+                <button class="toolbar-btn primary" id="executeBatchBtn" disabled>执行预览</button>
+            </div>
+            <div class="batch-configs" id="batchConfigs"></div>
+            <div class="batch-preview" id="batchPreview" style="display:none;">
+                <div class="collage-bar">
+                    <span>拼图预览</span>
+                    <div class="zoom-row">
+                        <button id="collageZoomOut">-</button>
+                        <span class="zoom-val" id="collageZoomVal">100%</span>
+                        <button id="collageZoomIn">+</button>
+                        <button id="collageZoomReset">重置</button>
+                    </div>
+                    <button class="toolbar-btn" id="downloadCollageBtn">下载拼图</button>
+                </div>
+                <div class="collage-viewport" id="collageViewport">
+                    <canvas id="collageCanvas"></canvas>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="/static/app.js"></script>

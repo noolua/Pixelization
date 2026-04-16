@@ -407,4 +407,138 @@ static/
 - **后端零改动**（仅需确认路由能服务 `.css` / `.js`）
 
 ---
+
+## 任务 12：Batch 配置数据模型 + 持久化
+
+**状态：已完成** ✅
+
+建立 batch 的数据层基础，定义与 Web/Python 共享的配置格式。
+
+- [x] 12.1 定义 batch 配置 JSON schema
+  ```json
+  {
+    "name": "图标多规格",
+    "tile_size": 16,
+    "configs": [
+      { "name": "大图参考", "pipeline": [{"type":"pixelize","params":{"cell_size":4}}, ...] },
+      { "name": "72x72", "pipeline": [...] },
+      ...
+    ]
+  }
+  ```
+  - `tile_size`：瓦片大小（像素），拼图时用于网格对齐
+  - `configs[]`：有序配置列表，每个包含 name + pipeline 步骤数组
+  - `pipeline[]` 中每个步骤包含 `type`（对应 PIPE_REGISTRY）和 `params`
+- [x] 12.2 实现 batch 数据操作函数
+  - `createBatch(name, tileSize)` — 创建空 batch
+  - `addBatchConfig(batch, name, pipelineSteps)` — 添加一个配置
+  - `removeBatchConfig(batch, index)` — 删除配置
+  - `moveBatchConfig(batch, from, to)` — 调整配置顺序
+  - `updateBatchConfig(batch, index, steps)` — 更新配置的 pipeline
+- [x] 12.3 持久化
+  - localStorage 键：`pixelization_batches`
+  - 存储所有 batch 配置（不含执行结果）
+  - `saveBatches(batches)` / `loadBatches()` 函数
+  - 支持多个 batch（用户可能有不同用途的 batch）
+- [x] 12.4 导入/导出
+  - 导出：将单个 batch 配置序列化为 JSON 文件下载
+  - 导入：读取 JSON 文件，验证格式，加入 batches 列表
+  - 导出的 JSON 即为 Python `batch_process.py` 的输入格式
+
+---
+
+## 任务 13：Batch 面板 UI
+
+**状态：已完成** ✅
+
+在现有管线编辑区下方新增 Batch 面板，支持可视化管理 batch 配置。
+
+- [x] 13.1 HTML 结构
+  - 在 `pipeline-section` 下方新增 `batch-section`
+  - 包含：batch 选择/新建、配置列表、预览画布、操作按钮
+- [x] 13.2 Batch 选择器
+  - 下拉选择已有 batch 或"新建 batch"
+  - batch 名称编辑（同管线标题模式）
+  - 删除 batch
+- [x] 13.3 配置列表 UI
+  - 每个配置显示为一行：序号 + 名称 + pipeline 概要（如"像素化(4) → 颜色优化(32)"）+ 编辑/删除按钮
+  - 支持拖拽排序
+  - "添加配置"按钮 — 可从"保存的配置"中选取，或手动创建
+  - 点击配置行可展开编辑 pipeline 步骤和参数（复用现有 pipe-card 样式）
+- [x] 13.4 样式
+  - 与现有管线区风格统一（白底圆角卡片、蓝色主色调）
+  - 配置列表紧凑排列（单行概要，展开编辑）
+  - 响应式适配（复用现有 media query）
+
+---
+
+## 任务 14：Batch 预览执行 + 瓦片拼图
+
+**状态：已完成** ✅
+
+执行 batch 中所有配置，将结果按 16px 网格拼图展示。
+
+- [x] 14.1 批量执行引擎
+  - `executeBatch()` 函数
+  - 遍历 `batch.configs`，对每个配置：
+    - 按顺序执行 pipeline 中每一步（复用 `executePipe` 逻辑）
+    - 收集最终输出 blob
+  - 存储结果到 `batchResults[]` 数组
+  - 逐个配置更新 UI 进度
+  - 任一配置失败不阻塞其他，标记错误
+- [x] 14.2 瓦片拼图算法
+  - 输入：`batchResults[]`（每个含 name + blob + Image 对象）
+  - 步骤：
+    1. 将每个结果加载为 Image，获取 (w, h)
+    2. 计算每个结果的瓦片占位 `(ceil(w/tile_size), ceil(h/tile_size))`
+    3. 找到面积最大的结果 → 排在最前面（作为参考图）
+    4. 其余按面积从大到小排序
+    5. 贪心摆放：维护已占用区域，逐个找到第一个不重叠的 (gx, gy) 网格位置
+    6. 目标：最终画布尽量方正
+  - 简化策略（首期）：
+    - 按面积排序后，固定列数 `cols = ceil(sqrt(总面积))`
+    - 逐行逐列摆放，行高取当前行最大瓦片高度
+- [x] 14.3 Canvas 渲染
+  - 创建 Canvas，尺寸 = 最大 (gx*tile_size + w, gy*tile_size + h)
+  - 透明/白底
+  - 每个结果 `drawImage(img, gx*tile_size, gy*tile_size)` — 左上角对齐网格
+  - 图像数据原样绘制，不填充不裁剪
+- [x] 14.4 预览区 UI
+  - 在 batch 配置列表下方显示拼图画布
+  - 支持缩放查看（复用现有缩放控件模式）
+  - "下载拼图"按钮 — 导出 Canvas 为 PNG
+- [x] 14.5 执行状态
+  - "执行预览"按钮（需已上传源图）
+  - 执行过程中逐个配置显示进度（loading → done/error）
+  - 全部完成后自动生成拼图
+
+---
+
+## 任务 15：Python 批量处理脚本（HTTP 模式）
+
+**状态：待实施**
+
+读取 batch 配置 JSON，通过 HTTP API 调用远程服务批量处理图像目录，生成拼图输出。
+
+- [ ] 15.1 创建 `batch_process.py`
+  - CLI 参数：`--config <batch.json> --input <图像目录> --output <输出目录> --server <API地址>`
+  - `--server` 默认 `http://127.0.0.1:8000`，支持远程服务地址
+  - 读取 batch 配置 JSON
+  - 遍历输入目录中的所有图像文件
+- [ ] 15.2 单图处理逻辑（HTTP）
+  - 对每张图像，执行 batch.configs 中每个配置的 pipeline
+  - 通过 `requests` 库 POST 到远程 API 端点（`/pixelize`、`/optimize-colors`、`/unify-background`）
+  - 逐步串行执行 pipeline，上一步的输出作为下一步的输入
+  - 收集每个配置的最终输出
+- [ ] 15.3 拼图生成
+  - 实现与 JS 端相同的瓦片拼图算法
+  - 使用 PIL/Pillow 拼图
+  - 输出 PNG 到输出目录，命名规则：`{原图名}_tiled.png`
+- [ ] 15.4 容错与日志
+  - 单张图像处理失败不阻塞，记录错误继续
+  - 输出处理摘要（成功/失败/跳过数量）
+
+---
+
 创建日期: 2026年4月16日
+更新日期: 2026年4月17日
