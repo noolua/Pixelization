@@ -5,369 +5,159 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>像素化工具</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+               background: #f5f5f5; min-height: 100vh; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 { text-align: center; margin-bottom: 30px; color: #333; }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #f5f5f5;
-            min-height: 100vh;
-            padding: 20px;
-        }
+        /* Upload Section */
+        .upload-section { background: white; border-radius: 12px; padding: 30px;
+                          margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .upload-area { border: 2px dashed #ddd; border-radius: 8px; padding: 40px;
+                       text-align: center; cursor: pointer; transition: all 0.3s; }
+        .upload-area:hover, .upload-area.dragover { border-color: #007aff; background: #f0f7ff; }
+        .upload-area p { color: #666; margin-bottom: 10px; }
+        .upload-area .hint { font-size: 14px; color: #999; }
+        .upload-area.has-file { border-style: solid; padding: 10px; }
+        .upload-area.has-file p, .upload-area.has-file .hint { display: none; }
+        .upload-area .preview-img { display: none; max-width: 100%; max-height: 300px; border-radius: 8px; }
+        .upload-area.has-file .preview-img { display: block; }
+        input[type="file"] { display: none; }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
+        .error { display: none; background: #fee; color: #c33; padding: 12px 16px;
+                 border-radius: 6px; margin-top: 15px; }
+        .error.show { display: block; }
+        .loading { display: none; text-align: center; padding: 20px; color: #666; }
+        .loading.show { display: block; }
+        .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #007aff;
+                   border-radius: 50%; width: 40px; height: 40px;
+                   animation: spin 1s linear infinite; margin: 0 auto 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        h1 {
-            text-align: center;
-            margin-bottom: 30px;
-            color: #333;
-        }
+        /* Pipeline Section */
+        .pipeline-section { background: white; border-radius: 12px; padding: 30px;
+                            box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 20px; }
 
-        .upload-section {
-            background: white;
-            border-radius: 12px;
-            padding: 30px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
+        /* Toolbar */
+        .pipeline-toolbar { display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap;
+                            align-items: center; }
+        .toolbar-btn { padding: 8px 16px; border: 1px solid #ddd; border-radius: 6px;
+                       background: white; color: #333; font-size: 13px; cursor: pointer;
+                       transition: all 0.2s; }
+        .toolbar-btn:hover { border-color: #007aff; color: #007aff; }
+        .toolbar-btn.primary { background: #007aff; color: white; border-color: #007aff; }
+        .toolbar-btn.primary:hover { background: #0056b3; }
+        .toolbar-btn.primary:disabled { background: #ccc; border-color: #ccc; cursor: not-allowed; color: white; }
+        .toolbar-btn.danger { color: #c33; border-color: #fcc; }
+        .toolbar-btn.danger:hover { background: #fee; }
+        .toolbar-sep { width: 1px; height: 24px; background: #eee; }
 
-        .upload-area {
-            border: 2px dashed #ddd;
-            border-radius: 8px;
-            padding: 40px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
+        /* Dropdown */
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-menu { display: none; position: absolute; top: 100%; left: 0;
+                         margin-top: 4px; background: white; border: 1px solid #ddd;
+                         border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                         z-index: 100; min-width: 220px; }
+        .dropdown-menu.show { display: block; }
+        .dropdown-item { display: block; width: 100%; padding: 10px 16px; border: none;
+                         background: none; text-align: left; cursor: pointer; font-size: 13px;
+                         color: #333; }
+        .dropdown-item:hover { background: #f0f7ff; }
+        .dropdown-item + .dropdown-item { border-top: 1px solid #f5f5f5; }
+        .dropdown-item.saved { display: flex; justify-content: space-between; align-items: center; }
+        .dropdown-item .del-config { background: none; border: none; color: #ccc;
+                                     font-size: 14px; cursor: pointer; padding: 0 2px; line-height: 1; }
+        .dropdown-item .del-config:hover { color: #ff3b30; }
 
-        .upload-area:hover, .upload-area.dragover {
-            border-color: #007aff;
-            background: #f0f7ff;
-        }
+        /* Save Config Form */
+        .save-form { display: none; align-items: center; gap: 6px; }
+        .save-form.show { display: flex; }
+        .save-form input[type="text"] { padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px;
+                                        font-size: 13px; width: 140px; outline: none; }
+        .save-form input[type="text"]:focus { border-color: #007aff; }
+        .save-form .confirm-btn { padding: 6px 12px; background: #34c759; color: white;
+                                  border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+        .save-form .confirm-btn:hover { background: #28a745; }
+        .save-form .cancel-btn { padding: 6px 10px; background: none; border: 1px solid #ddd;
+                                 border-radius: 4px; font-size: 13px; cursor: pointer; color: #666; }
+        .save-form .cancel-btn:hover { background: #f5f5f5; }
 
-        .upload-area p {
-            color: #666;
-            margin-bottom: 10px;
-        }
+        /* Pipeline Flow */
+        .pipeline-flow { display: flex; flex-direction: column; }
 
-        .upload-area .hint {
-            font-size: 14px;
-            color: #999;
-        }
+        /* Pipe Card */
+        .pipe-card { border: 2px solid #e0e0e0; border-radius: 10px; background: white;
+                     transition: border-color 0.2s; }
+        .pipe-card.running { border-color: #007aff; }
+        .pipe-card.done { border-color: #34c759; }
+        .pipe-card.error { border-color: #ff3b30; }
+        .pipe-card.stale { border-color: #ff9500; }
 
-        .upload-area.has-file {
-            border-style: solid;
-            padding: 10px;
-        }
+        .pipe-header { display: flex; align-items: center; padding: 12px 16px;
+                       cursor: pointer; user-select: none; gap: 10px; }
+        .pipe-header .drag-handle { cursor: grab; color: #ccc; font-size: 16px;
+                                    letter-spacing: 2px; }
+        .pipe-header .drag-handle:active { cursor: grabbing; }
+        .pipe-header .pipe-label { font-weight: 500; color: #333; flex: 1; }
+        .pipe-header .pipe-status { font-size: 12px; color: #999; }
+        .pipe-header .delete-btn { background: none; border: none; color: #ccc;
+                                   font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1; }
+        .pipe-header .delete-btn:hover { color: #ff3b30; }
 
-        .upload-area.has-file p,
-        .upload-area.has-file .hint {
-            display: none;
-        }
+        .pipe-body { display: none; padding: 0 16px 16px; }
+        .pipe-card.expanded .pipe-body { display: block; }
 
-        .upload-area .preview-img {
-            display: none;
-            max-width: 100%;
-            max-height: 300px;
-            border-radius: 8px;
-        }
+        /* Params */
+        .pipe-params { display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+                       margin-bottom: 12px; }
+        .param-group { display: flex; align-items: center; gap: 8px; }
+        .param-group label { font-size: 13px; color: #666; white-space: nowrap; }
+        .param-group select, .param-group input[type="number"] {
+            padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
+        .param-group input[type="range"] { width: 120px; cursor: pointer; }
+        .param-group input[type="color"] { width: 36px; height: 28px; padding: 2px;
+                                           cursor: pointer; border: 1px solid #ddd; border-radius: 4px; }
+        .param-group .range-val { font-size: 12px; color: #888; min-width: 28px; }
 
-        .upload-area.has-file .preview-img {
-            display: block;
-        }
+        /* Pipe Actions */
+        .pipe-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .act-btn { padding: 6px 14px; border-radius: 4px; font-size: 13px;
+                   cursor: pointer; border: none; transition: all 0.2s; }
+        .act-btn.exec { background: #007aff; color: white; }
+        .act-btn.exec:hover { background: #0056b3; }
+        .act-btn.exec:disabled { background: #ccc; cursor: not-allowed; }
+        .act-btn.exec-from { background: #ff9500; color: white; }
+        .act-btn.exec-from:hover { background: #e08600; }
+        .act-btn.exec-from:disabled { background: #ccc; cursor: not-allowed; }
+        .act-btn.dl { background: #34c759; color: white; }
+        .act-btn.dl:hover { background: #28a745; }
 
-        .controls {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            margin-top: 20px;
-            flex-wrap: wrap;
-        }
+        /* Pipe Result */
+        .pipe-result { margin-top: 12px; padding-top: 12px; border-top: 1px solid #f0f0f0; }
+        .pipe-result .result-viewport { overflow: auto; border: 1px solid #eee;
+                                        border-radius: 8px; max-height: 400px; }
+        .pipe-result img { max-width: 100%; display: block; }
+        .pipe-result img.pixelated { image-rendering: pixelated;
+                                     image-rendering: -moz-crisp-edges;
+                                     image-rendering: crisp-edges; }
+        .zoom-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+                    justify-content: center; }
+        .zoom-row button { padding: 4px 12px; font-size: 14px; line-height: 1; min-width: 28px;
+                           background: #f5f5f5; color: #333; border: 1px solid #ddd;
+                           border-radius: 4px; cursor: pointer; }
+        .zoom-row button:hover { background: #eee; }
+        .zoom-row .zoom-val { font-size: 12px; color: #888; min-width: 36px; text-align: center; }
+        .pipe-result .color-info { font-size: 12px; color: #888; margin-top: 6px; text-align: center; }
 
-        .control-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
+        /* Connector */
+        .pipe-connector { height: 20px; display: flex; justify-content: center; }
+        .pipe-connector::before { content: ''; width: 2px; height: 100%; background: #ddd; }
 
-        label {
-            font-weight: 500;
-            color: #333;
-        }
-
-        select {
-            padding: 8px 16px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-            cursor: pointer;
-        }
-
-        button {
-            padding: 10px 24px;
-            background: #007aff;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-
-        button:hover {
-            background: #0056b3;
-        }
-
-        button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-
-        .result-section {
-            display: none;
-            background: white;
-            border-radius: 12px;
-            padding: 30px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .result-section.show {
-            display: block;
-        }
-
-        .image-compare {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-        }
-
-        .image-box {
-            text-align: center;
-        }
-
-        .image-box h3 {
-            margin-bottom: 10px;
-            color: #333;
-        }
-
-        .image-box img {
-            max-width: 100%;
-            border-radius: 8px;
-            border: 1px solid #eee;
-        }
-
-        .image-box img.pixelated-preview {
-            image-rendering: pixelated;
-            image-rendering: -moz-crisp-edges;
-            image-rendering: crisp-edges;
-        }
-
-        .image-viewport {
-            overflow: auto;
-            border: 1px solid #eee;
-            border-radius: 8px;
-            max-height: 500px;
-        }
-
-        .zoom-controls {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 8px;
-            justify-content: center;
-        }
-
-        .zoom-controls button {
-            padding: 4px 12px;
-            font-size: 16px;
-            line-height: 1;
-            min-width: 32px;
-        }
-
-        .zoom-controls .zoom-level {
-            font-size: 13px;
-            color: #666;
-            min-width: 40px;
-            text-align: center;
-        }
-
-        .download-btn {
-            margin-top: 15px;
-            padding: 10px 24px;
-            background: #34c759;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background 0.3s;
-            text-align: center;
-            display: inline-block;
-        }
-
-        .download-btn:hover {
-            background: #28a745;
-        }
-
-        .download-btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-
-        .optimize-btn {
-            margin-top: 15px;
-            padding: 10px 24px;
-            background: #ff9500;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-
-        .optimize-btn:hover {
-            background: #e08600;
-        }
-
-        .optimize-btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-
-        .color-info {
-            margin-top: 8px;
-            font-size: 13px;
-            color: #888;
-        }
-
-        .loading {
-            display: none;
-            text-align: center;
-            padding: 20px;
-            color: #666;
-        }
-
-        .loading.show {
-            display: block;
-        }
-
-        .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #007aff;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 10px;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .error {
-            display: none;
-            background: #fee;
-            color: #c33;
-            padding: 12px 16px;
-            border-radius: 6px;
-            margin-top: 15px;
-        }
-
-        .error.show {
-            display: block;
-        }
-
-        input[type="file"] {
-            display: none;
-        }
-
-        .bg-unify-section {
-            display: none;
-            margin-top: 20px;
-            padding: 16px;
-            background: #f9f9f9;
-            border-radius: 8px;
-            border: 1px solid #eee;
-        }
-
-        .bg-unify-section.show {
-            display: block;
-        }
-
-        .bg-unify-toggle {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-weight: 500;
-            color: #333;
-            cursor: pointer;
-        }
-
-        .bg-unify-toggle input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-        }
-
-        .bg-unify-controls {
-            display: none;
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid #eee;
-        }
-
-        .bg-unify-controls.show {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            flex-wrap: wrap;
-        }
-
-        .bg-unify-controls input[type="range"] {
-            width: 120px;
-            cursor: pointer;
-        }
-
-        .bg-unify-controls .tolerance-val {
-            font-size: 13px;
-            color: #666;
-            min-width: 30px;
-        }
-
-        .bg-unify-preview {
-            display: none;
-            margin-top: 12px;
-            text-align: center;
-        }
-
-        .bg-unify-preview.show {
-            display: block;
-        }
-
-        .bg-unify-preview img {
-            max-width: 100%;
-            max-height: 200px;
-            border-radius: 8px;
-            border: 1px solid #eee;
-        }
-
-        .bg-unify-preview .label {
-            font-size: 13px;
-            color: #888;
-            margin-top: 4px;
-        }
+        /* Drag states */
+        .pipe-card.dragging { opacity: 0.4; }
+        .pipe-card.drag-over-top { border-top: 3px solid #007aff; }
+        .pipe-card.drag-over-bottom { border-bottom: 3px solid #007aff; }
     </style>
 </head>
 <body>
@@ -381,571 +171,741 @@
                 <img id="previewImg" class="preview-img" src="" alt="预览">
             </div>
             <input type="file" id="fileInput" accept="image/png,image/jpeg,image/jpg">
-
-            <div class="bg-unify-section" id="bgUnifySection">
-                <label class="bg-unify-toggle">
-                    <input type="checkbox" id="bgUnifyToggle">
-                    启用背景色统一
-                </label>
-                <div class="bg-unify-controls" id="bgUnifyControls">
-                    <div class="control-group">
-                        <label for="bgTolerance">容差:</label>
-                        <input type="range" id="bgTolerance" min="1" max="20" step="0.5" value="5.0">
-                        <span class="tolerance-val" id="bgToleranceVal">5.0</span>
-                    </div>
-                    <div class="control-group">
-                        <label for="bgTargetColor">目标色:</label>
-                        <input type="color" id="bgTargetColor" value="#808080"
-                               style="width:40px;height:32px;padding:2px;cursor:pointer;border:1px solid #ddd;border-radius:4px;">
-                    </div>
-                    <button id="bgUnifyBtn" disabled>统一背景</button>
-                </div>
-                <div class="bg-unify-preview" id="bgUnifyPreview">
-                    <img id="bgUnifyPreviewImg" src="" alt="背景统一预览">
-                    <p class="label">背景统一预览</p>
-                </div>
-            </div>
-
-            <div class="controls">
-                <div class="control-group">
-                    <label for="cellSize">像素化程度:</label>
-                    <select id="cellSize">
-                        <option value="2">2 (轻微)</option>
-                        <option value="3">3</option>
-                        <option value="4" selected>4 (中等)</option>
-                        <option value="5">5</option>
-                        <option value="6">6</option>
-                        <option value="7">7</option>
-                        <option value="8">8 (强烈)</option>
-                    </select>
-                </div>
-                <div class="control-group">
-                    <label for="targetColors">目标颜色数:</label>
-                    <input type="number" id="targetColors" value="32" min="2" max="256"
-                           style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;width:80px;">
-                </div>
-                <button id="processBtn" disabled>处理图像</button>
-            </div>
-
             <div class="error" id="error"></div>
-
             <div class="loading" id="loading">
                 <div class="spinner"></div>
-                <p>处理中...</p>
+                <p id="loadingText">处理中...</p>
             </div>
         </div>
 
-        <div class="result-section" id="resultSection">
-            <div class="image-compare">
-                <div class="image-box">
-                    <h3>原图</h3>
-                    <div class="zoom-controls">
-                        <button onclick="zoom('originalImage', -1)">-</button>
-                        <span class="zoom-level" id="zoom-originalImage">100%</span>
-                        <button onclick="zoom('originalImage', 1)">+</button>
-                        <button onclick="zoom('originalImage', 0)">重置</button>
-                    </div>
-                    <div class="image-viewport">
-                        <img id="originalImage" src="" alt="原图">
-                    </div>
+        <div class="pipeline-section" id="pipelineSection">
+            <div class="pipeline-toolbar">
+                <div class="dropdown" id="addPipeDropdown">
+                    <button class="toolbar-btn" id="addPipeBtn">+ 添加步骤</button>
+                    <div class="dropdown-menu" id="addPipeMenu"></div>
                 </div>
-                <div class="image-box" id="unifiedBox" style="display:none;">
-                    <h3>背景统一</h3>
-                    <div class="zoom-controls">
-                        <button onclick="zoom('unifiedImage', -1)">-</button>
-                        <span class="zoom-level" id="zoom-unifiedImage">100%</span>
-                        <button onclick="zoom('unifiedImage', 1)">+</button>
-                        <button onclick="zoom('unifiedImage', 0)">重置</button>
-                    </div>
-                    <div class="image-viewport">
-                        <img id="unifiedImage" src="" alt="背景统一结果">
-                    </div>
+                <div class="dropdown" id="presetDropdown">
+                    <button class="toolbar-btn" id="presetBtn">预设模板</button>
+                    <div class="dropdown-menu" id="presetMenu"></div>
                 </div>
-                <div class="image-box">
-                    <h3>像素化结果</h3>
-                    <div class="zoom-controls">
-                        <button onclick="zoom('resultImage', -1)">-</button>
-                        <span class="zoom-level" id="zoom-resultImage">100%</span>
-                        <button onclick="zoom('resultImage', 1)">+</button>
-                        <button onclick="zoom('resultImage', 0)">重置</button>
-                    </div>
-                    <div class="image-viewport">
-                        <img id="resultImage" class="pixelated-preview" src="" alt="像素化结果">
-                    </div>
-                    <p class="color-info" id="colorInfo"></p>
-                    <div style="text-align: center;">
-                        <button id="optimizeBtn" class="optimize-btn" disabled>颜色优化</button>
-                        <button id="downloadBtn" class="download-btn">下载原始尺寸</button>
-                    </div>
+                <div class="toolbar-sep"></div>
+                <button class="toolbar-btn primary" id="executeAllBtn" disabled>执行全部</button>
+                <div class="toolbar-sep"></div>
+                <div class="dropdown" id="savedConfigDropdown">
+                    <button class="toolbar-btn" id="savedConfigBtn">我的配置</button>
+                    <div class="dropdown-menu" id="savedConfigMenu"></div>
                 </div>
-                <div class="image-box" id="optimizedBox" style="display:none;">
-                    <h3>颜色优化结果</h3>
-                    <div class="zoom-controls">
-                        <button onclick="zoom('optimizedImage', -1)">-</button>
-                        <span class="zoom-level" id="zoom-optimizedImage">100%</span>
-                        <button onclick="zoom('optimizedImage', 1)">+</button>
-                        <button onclick="zoom('optimizedImage', 0)">重置</button>
-                    </div>
-                    <div class="image-viewport">
-                        <img id="optimizedImage" class="pixelated-preview" src="" alt="颜色优化结果">
-                    </div>
-                    <p class="color-info" id="optimizedColorInfo"></p>
-                    <div style="text-align: center;">
-                        <button id="downloadOptimizedBtn" class="download-btn">下载优化图像</button>
-                    </div>
-                    <div class="bg-unify-post" id="bgUnifyPostControls" style="margin-top:15px;padding-top:15px;border-top:1px solid #eee;">
-                        <label class="bg-unify-toggle">
-                            <input type="checkbox" id="bgUnifyPostToggle">
-                            背景色统一
-                        </label>
-                        <div id="bgUnifyPostParams" style="display:none;margin-top:10px;">
-                            <div class="control-group" style="margin-bottom:8px;">
-                                <label>容差:</label>
-                                <input type="range" id="bgTolerancePost" min="1" max="20" step="0.5" value="5.0">
-                                <span id="bgTolerancePostVal" class="tolerance-val">5.0</span>
-                            </div>
-                            <div class="control-group" style="margin-bottom:8px;">
-                                <label>目标色:</label>
-                                <input type="color" id="bgTargetColorPost" value="#808080"
-                                       style="width:40px;height:32px;padding:2px;cursor:pointer;border:1px solid #ddd;border-radius:4px;">
-                            </div>
-                            <button id="bgUnifyPostBtn">统一背景</button>
-                        </div>
-                    </div>
+                <button class="toolbar-btn" id="saveConfigBtn">保存配置</button>
+                <div class="save-form" id="saveForm">
+                    <input type="text" id="saveConfigName" placeholder="配置名称" maxlength="30">
+                    <button class="confirm-btn" id="saveConfirmBtn">保存</button>
+                    <button class="cancel-btn" id="saveCancelBtn">取消</button>
                 </div>
-                <div class="image-box" id="unifiedPostBox" style="display:none;">
-                    <h3>优化后背景统一</h3>
-                    <div class="zoom-controls">
-                        <button onclick="zoom('unifiedPostImage', -1)">-</button>
-                        <span class="zoom-level" id="zoom-unifiedPostImage">100%</span>
-                        <button onclick="zoom('unifiedPostImage', 1)">+</button>
-                        <button onclick="zoom('unifiedPostImage', 0)">重置</button>
-                    </div>
-                    <div class="image-viewport">
-                        <img id="unifiedPostImage" class="pixelated-preview" src="" alt="优化后背景统一">
-                    </div>
-                    <div style="text-align: center;">
-                        <button id="downloadUnifiedPostBtn" class="download-btn">下载最终图像</button>
-                    </div>
-                </div>
+                <div style="flex:1;"></div>
+                <button class="toolbar-btn danger" id="resetBtn">重置默认</button>
             </div>
+            <div class="pipeline-flow" id="pipelineFlow"></div>
         </div>
     </div>
 
     <script>
-        const uploadArea = document.getElementById('uploadArea');
-        const fileInput = document.getElementById('fileInput');
-        const cellSize = document.getElementById('cellSize');
-        const targetColors = document.getElementById('targetColors');
-        const processBtn = document.getElementById('processBtn');
-        const resultSection = document.getElementById('resultSection');
-        const previewImg = document.getElementById('previewImg');
-        const originalImage = document.getElementById('originalImage');
-        const resultImage = document.getElementById('resultImage');
-        const loading = document.getElementById('loading');
-        const error = document.getElementById('error');
-        const downloadBtn = document.getElementById('downloadBtn');
-        const optimizeBtn = document.getElementById('optimizeBtn');
-        const optimizedBox = document.getElementById('optimizedBox');
-        const optimizedImage = document.getElementById('optimizedImage');
-        const downloadOptimizedBtn = document.getElementById('downloadOptimizedBtn');
-        const colorInfo = document.getElementById('colorInfo');
-        const optimizedColorInfo = document.getElementById('optimizedColorInfo');
+    // ============================================================
+    // 数据层
+    // ============================================================
 
-        let selectedFile = null;
-        let pixelatedBlob = null;
-        let optimizedBlob = null;
-        let unifiedBlob = null;
-        let unifiedPostBlob = null;
-
-        // 点击上传区域触发文件选择
-        uploadArea.addEventListener('click', () => {
-            fileInput.click();
-        });
-
-        // 文件选择
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                selectedFile = e.target.files[0];
-                resultSection.classList.remove('show');
-                showPreview(selectedFile);
-            }
-        });
-
-        // 拖拽上传
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
-
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('dragover');
-        });
-
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                const file = files[0];
-                if (file.type.startsWith('image/')) {
-                    selectedFile = file;
-                    resultSection.classList.remove('show');
-                    showPreview(file);
-                } else {
-                    showError('请选择有效的图像文件');
-                }
-            }
-        });
-
-        // 显示预览
-        function showPreview(file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                previewImg.src = e.target.result;
-                originalImage.src = e.target.result;
-                uploadArea.classList.add('has-file');
-                processBtn.disabled = false;
-                document.getElementById('bgUnifySection').classList.add('show');
-                // 重置背景统一状态
-                unifiedBlob = null;
-                document.getElementById('bgUnifyToggle').checked = false;
-                document.getElementById('bgUnifyControls').classList.remove('show');
-                document.getElementById('bgUnifyPreview').classList.remove('show');
-                document.getElementById('bgUnifyBtn').disabled = true;
-                hideError();
-            };
-            reader.readAsDataURL(file);
+    const PIPE_REGISTRY = {
+        'unify-background': {
+            type: 'unify-background',
+            label: '背景统一',
+            endpoint: '/unify-background',
+            params: [
+                { key: 'tolerance', label: '容差', type: 'range',
+                  min: 1, max: 20, step: 0.5, default: 5.0 },
+                { key: 'target_color', label: '目标色', type: 'color',
+                  default: '#808080' }
+            ],
+            resultType: 'default'
+        },
+        'pixelize': {
+            type: 'pixelize',
+            label: '像素化',
+            endpoint: '/pixelize',
+            params: [
+                { key: 'cell_size', label: '像素化程度', type: 'select',
+                  options: [
+                    { value: 2, label: '2 (轻微)' },
+                    { value: 3, label: '3' },
+                    { value: 4, label: '4 (中等)' },
+                    { value: 5, label: '5' },
+                    { value: 6, label: '6' },
+                    { value: 7, label: '7' },
+                    { value: 8, label: '8 (强烈)' }
+                  ],
+                  default: 4 }
+            ],
+            resultType: 'pixelated'
+        },
+        'optimize-colors': {
+            type: 'optimize-colors',
+            label: '颜色优化',
+            endpoint: '/optimize-colors',
+            params: [
+                { key: 'target_colors', label: '目标颜色数', type: 'number',
+                  min: 2, max: 256, default: 32 }
+            ],
+            resultType: 'pixelated'
         }
+    };
 
-        // 背景统一 toggle
-        const bgUnifyToggle = document.getElementById('bgUnifyToggle');
-        const bgUnifyControls = document.getElementById('bgUnifyControls');
-        const bgTolerance = document.getElementById('bgTolerance');
-        const bgToleranceVal = document.getElementById('bgToleranceVal');
-        const bgTargetColor = document.getElementById('bgTargetColor');
-        const bgUnifyBtn = document.getElementById('bgUnifyBtn');
-        const bgUnifyPreview = document.getElementById('bgUnifyPreview');
-        const bgUnifyPreviewImg = document.getElementById('bgUnifyPreviewImg');
-        const unifiedBox = document.getElementById('unifiedBox');
-        const unifiedImage = document.getElementById('unifiedImage');
+    const PIPELINE_PRESETS = {
+        'default': { label: '默认（像素化 → 颜色优化）', pipes: ['pixelize', 'optimize-colors'] },
+        'with-bg': { label: '含背景统一', pipes: ['unify-background', 'pixelize', 'optimize-colors'] },
+        'bg-only': { label: '仅背景统一', pipes: ['unify-background'] }
+    };
 
-        bgUnifyToggle.addEventListener('change', () => {
-            bgUnifyControls.classList.toggle('show', bgUnifyToggle.checked);
-            bgUnifyBtn.disabled = !bgUnifyToggle.checked;
-            if (!bgUnifyToggle.checked) {
-                bgUnifyPreview.classList.remove('show');
-                unifiedBlob = null;
-            }
-        });
+    let _pipeIdCounter = 0;
+    function nextPipeId() { return 'pipe_' + (_pipeIdCounter++); }
 
-        bgTolerance.addEventListener('input', () => {
-            bgToleranceVal.textContent = parseFloat(bgTolerance.value).toFixed(1);
-        });
+    function defaultParams(pipeType) {
+        const params = {};
+        for (const p of PIPE_REGISTRY[pipeType].params) params[p.key] = p.default;
+        return params;
+    }
 
-        bgUnifyBtn.addEventListener('click', async () => {
-            if (!selectedFile) return;
+    function createPipelineState(pipeTypes) {
+        const pipes = pipeTypes.map(type => ({ type, id: nextPipeId(), params: defaultParams(type) }));
+        const blobs = {};
+        for (const p of pipes) blobs[p.id] = null;
+        return { pipes, blobs, executedUpTo: -1 };
+    }
 
-            bgUnifyBtn.disabled = true;
-            bgUnifyBtn.textContent = '处理中...';
+    function addPipe(state, type, index) {
+        const pipe = { type, id: nextPipeId(), params: defaultParams(type) };
+        if (index == null) index = state.pipes.length;
+        state.pipes.splice(index, 0, pipe);
+        state.blobs[pipe.id] = null;
+        resetFrom(state, index);
+        return pipe;
+    }
 
-            const formData = new FormData();
-            formData.append('image', selectedFile);
-            formData.append('tolerance', bgTolerance.value);
-            formData.append('target_color', bgTargetColor.value);
+    function removePipe(state, id) {
+        const idx = state.pipes.findIndex(p => p.id === id);
+        if (idx === -1) return;
+        state.pipes.splice(idx, 1);
+        delete state.blobs[id];
+        resetFrom(state, idx);
+    }
 
-            try {
-                const response = await fetch('/unify-background', {
-                    method: 'POST',
-                    body: formData
-                });
+    function movePipe(state, fromIndex, toIndex) {
+        const adjusted = fromIndex < toIndex ? toIndex - 1 : toIndex;
+        if (adjusted === fromIndex) return;
+        const [pipe] = state.pipes.splice(fromIndex, 1);
+        state.pipes.splice(adjusted, 0, pipe);
+        resetFrom(state, Math.min(fromIndex, adjusted));
+    }
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || '背景统一失败');
-                }
+    function updateParam(state, id, key, value) {
+        const pipe = state.pipes.find(p => p.id === id);
+        if (!pipe) return;
+        pipe.params[key] = value;
+        resetFrom(state, state.pipes.indexOf(pipe));
+    }
 
-                const blob = await response.blob();
-                unifiedBlob = blob;
-                const url = URL.createObjectURL(blob);
-                bgUnifyPreviewImg.src = url;
-                bgUnifyPreview.classList.add('show');
+    function getInputBlob(state, pipeIndex) {
+        if (pipeIndex === 0) return null;
+        return state.blobs[state.pipes[pipeIndex - 1].id];
+    }
 
-            } catch (err) {
-                showError(err.message);
-            } finally {
-                bgUnifyBtn.textContent = '统一背景';
-                bgUnifyBtn.disabled = false;
-            }
-        });
+    function resetFrom(state, pipeIndex) {
+        for (let i = pipeIndex; i < state.pipes.length; i++) state.blobs[state.pipes[i].id] = null;
+        if (state.executedUpTo >= pipeIndex) state.executedUpTo = pipeIndex - 1;
+    }
 
-        // 处理图像
-        processBtn.addEventListener('click', async () => {
-            if (!selectedFile) return;
+    // localStorage
+    const STORAGE_KEY = 'pixelization_pipeline';
 
+    function serializePipeline(state) {
+        return JSON.stringify({ pipes: state.pipes.map(p => ({ type: p.type, params: p.params })) });
+    }
+
+    function deserializePipeline(json) {
+        const data = JSON.parse(json);
+        const pipes = data.pipes.filter(p => PIPE_REGISTRY[p.type]).map(p => ({
+            type: p.type, id: nextPipeId(), params: { ...defaultParams(p.type), ...p.params }
+        }));
+        if (pipes.length === 0) return createPipelineState(PIPELINE_PRESETS['default'].pipes);
+        const blobs = {};
+        for (const p of pipes) blobs[p.id] = null;
+        return { pipes, blobs, executedUpTo: -1 };
+    }
+
+    function savePipeline(state) {
+        try { localStorage.setItem(STORAGE_KEY, serializePipeline(state)); } catch (e) {}
+    }
+
+    function loadPipeline() {
+        try {
+            const json = localStorage.getItem(STORAGE_KEY);
+            if (json) return deserializePipeline(json);
+        } catch (e) {}
+        return createPipelineState(PIPELINE_PRESETS['default'].pipes);
+    }
+
+    // ============================================================
+    // 状态 & DOM 引用
+    // ============================================================
+
+    let pipelineState = loadPipeline();
+    let selectedFile = null;
+    let isExecuting = false;
+    const zoomScales = {};
+
+    const $ = id => document.getElementById(id);
+    const uploadArea = $('uploadArea');
+    const fileInput = $('fileInput');
+    const previewImg = $('previewImg');
+    const pipelineSection = $('pipelineSection');
+    const pipelineFlow = $('pipelineFlow');
+    const errorEl = $('error');
+    const loadingEl = $('loading');
+    const loadingText = $('loadingText');
+    const executeAllBtn = $('executeAllBtn');
+
+    // ============================================================
+    // 工具函数
+    // ============================================================
+
+    function showError(msg) { errorEl.textContent = msg; errorEl.classList.add('show'); }
+    function hideError() { errorEl.classList.remove('show'); }
+    function showLoading(text) { loadingText.textContent = text || '处理中...'; loadingEl.classList.add('show'); }
+    function hideLoading() { loadingEl.classList.remove('show'); }
+
+    function countColors(imgEl) {
+        const c = document.createElement('canvas');
+        c.width = imgEl.naturalWidth; c.height = imgEl.naturalHeight;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(imgEl, 0, 0);
+        const d = ctx.getImageData(0, 0, c.width, c.height).data;
+        const s = new Set();
+        for (let i = 0; i < d.length; i += 4) s.add((d[i] << 16) | (d[i+1] << 8) | d[i+2]);
+        return s.size;
+    }
+
+    function triggerDownload(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // ============================================================
+    // 上传处理
+    // ============================================================
+
+    uploadArea.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', e => {
+        if (e.target.files.length > 0) { selectedFile = e.target.files[0]; onFileSelected(); }
+    });
+
+    uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+    uploadArea.addEventListener('drop', e => {
+        e.preventDefault(); uploadArea.classList.remove('dragover');
+        const f = e.dataTransfer.files;
+        if (f.length > 0 && f[0].type.startsWith('image/')) { selectedFile = f[0]; onFileSelected(); }
+        else showError('请选择有效的图像文件');
+    });
+
+    function onFileSelected() {
+        const reader = new FileReader();
+        reader.onload = e => {
+            previewImg.src = e.target.result;
+            uploadArea.classList.add('has-file');
+            // 清除所有结果
+            for (const p of pipelineState.pipes) pipelineState.blobs[p.id] = null;
+            pipelineState.executedUpTo = -1;
+            renderPipeline();
             hideError();
-            loading.classList.add('show');
-            processBtn.disabled = true;
+        };
+        reader.readAsDataURL(selectedFile);
+    }
 
-            const formData = new FormData();
-            const inputBlob = (bgUnifyToggle.checked && unifiedBlob) ? unifiedBlob : selectedFile;
-            const inputName = (bgUnifyToggle.checked && unifiedBlob) ? 'unified.png' : selectedFile.name;
-            formData.append('image', inputBlob, inputName);
-            formData.append('cell_size', cellSize.value);
+    // ============================================================
+    // 管线渲染
+    // ============================================================
 
-            try {
-                const response = await fetch('/pixelize', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || '处理失败');
-                }
-
-                const blob = await response.blob();
-                pixelatedBlob = blob;
-                const resultUrl = URL.createObjectURL(blob);
-                resultImage.src = resultUrl;
-                resultSection.classList.add('show');
-
-                // 如果使用了背景统一，显示统一结果列
-                if (bgUnifyToggle.checked && unifiedBlob) {
-                    unifiedBox.style.display = 'block';
-                    unifiedImage.src = URL.createObjectURL(unifiedBlob);
-                } else {
-                    unifiedBox.style.display = 'none';
-                }
-
-                // 计算并显示颜色数
-                const imgEl = new Image();
-                imgEl.onload = () => {
-                    const colorCount = countColors(imgEl);
-                    colorInfo.textContent = `当前颜色数: ${colorCount}`;
-                    const target = parseInt(targetColors.value);
-                    optimizeBtn.disabled = colorCount <= target;
-                    if (colorCount <= target) {
-                        colorInfo.textContent += ` (已满足目标 ${target})`;
-                    }
-                };
-                imgEl.src = resultUrl;
-
-                // 隐藏之前的优化结果
-                optimizedBox.style.display = 'none';
-
-            } catch (err) {
-                showError(err.message);
-            } finally {
-                loading.classList.remove('show');
-                processBtn.disabled = false;
+    function renderPipeline() {
+        pipelineFlow.innerHTML = '';
+        pipelineState.pipes.forEach((pipe, idx) => {
+            if (idx > 0) {
+                const conn = document.createElement('div');
+                conn.className = 'pipe-connector';
+                pipelineFlow.appendChild(conn);
             }
+            pipelineFlow.appendChild(createPipeCard(pipe, idx));
+        });
+        updateToolbar();
+        savePipeline(pipelineState);
+    }
+
+    function cardState(pipe, idx) {
+        const hasBlob = !!pipelineState.blobs[pipe.id];
+        if (!hasBlob) return idx <= pipelineState.executedUpTo ? 'stale' : '';
+        return idx > pipelineState.executedUpTo ? 'stale' : 'done';
+    }
+
+    function statusText(state) {
+        if (state === 'done') return '已完成';
+        if (state === 'stale') return '需重新执行';
+        return '待执行';
+    }
+
+    function createPipeCard(pipe, index) {
+        const reg = PIPE_REGISTRY[pipe.type];
+        const cs = cardState(pipe, index);
+        const hasBlob = !!pipelineState.blobs[pipe.id];
+
+        const card = document.createElement('div');
+        card.className = 'pipe-card' + (cs ? ' ' + cs : '') + (hasBlob ? ' expanded' : '');
+        card.dataset.pipeId = pipe.id;
+        card.dataset.index = index;
+
+        // --- Header ---
+        const header = document.createElement('div');
+        header.className = 'pipe-header';
+        header.innerHTML = `
+            <span class="drag-handle" draggable="true">\u22EE\u22EE</span>
+            <span class="pipe-label">${reg.label}</span>
+            <span class="pipe-status">${statusText(cs)}</span>
+            <button class="delete-btn" title="删除">\u00D7</button>
+        `;
+
+        // 展开/折叠
+        header.addEventListener('click', e => {
+            if (e.target.classList.contains('drag-handle') || e.target.classList.contains('delete-btn')) return;
+            card.classList.toggle('expanded');
         });
 
-        // 下载原始尺寸图像
-        downloadBtn.addEventListener('click', async () => {
-            if (!pixelatedBlob) return;
-
-            const url = URL.createObjectURL(pixelatedBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `pixelized_${cellSize.value}_${selectedFile.name}`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+        // 删除
+        header.querySelector('.delete-btn').addEventListener('click', e => {
+            e.stopPropagation();
+            if (pipelineState.pipes.length <= 1) return;
+            removePipe(pipelineState, pipe.id);
+            renderPipeline();
         });
 
-        // 统计图像颜色数
-        function countColors(imgEl) {
-            const canvas = document.createElement('canvas');
-            canvas.width = imgEl.naturalWidth;
-            canvas.height = imgEl.naturalHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(imgEl, 0, 0);
-            const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-            const colors = new Set();
-            for (let i = 0; i < data.length; i += 4) {
-                colors.add((data[i] << 16) | (data[i+1] << 8) | data[i+2]);
-            }
-            return colors.size;
+        // --- Body ---
+        const body = document.createElement('div');
+        body.className = 'pipe-body';
+
+        // 参数
+        const paramsDiv = document.createElement('div');
+        paramsDiv.className = 'pipe-params';
+        for (const pd of reg.params) paramsDiv.appendChild(createParamControl(pd, pipe));
+        body.appendChild(paramsDiv);
+
+        // 操作按钮
+        const actions = document.createElement('div');
+        actions.className = 'pipe-actions';
+
+        const canExec = selectedFile && !isExecuting && (index === 0 || !!getInputBlob(pipelineState, index));
+        const execBtn = document.createElement('button');
+        execBtn.className = 'act-btn exec';
+        execBtn.textContent = '执行此步骤';
+        execBtn.disabled = !canExec;
+        execBtn.addEventListener('click', () => runSingle(index));
+        actions.appendChild(execBtn);
+
+        if ((cs === 'stale' || hasBlob) && index < pipelineState.pipes.length - 1) {
+            const fromBtn = document.createElement('button');
+            fromBtn.className = 'act-btn exec-from';
+            fromBtn.textContent = '从此步执行到底';
+            fromBtn.disabled = !selectedFile || isExecuting;
+            fromBtn.addEventListener('click', () => runFrom(index));
+            actions.appendChild(fromBtn);
         }
 
-        // 颜色优化
-        optimizeBtn.addEventListener('click', async () => {
-            if (!pixelatedBlob) return;
+        if (hasBlob) {
+            const dlBtn = document.createElement('button');
+            dlBtn.className = 'act-btn dl';
+            dlBtn.textContent = '下载';
+            dlBtn.addEventListener('click', () => triggerDownload(pipelineState.blobs[pipe.id], `${pipe.type}_result.png`));
+            actions.appendChild(dlBtn);
+        }
+        body.appendChild(actions);
 
-            const target = parseInt(targetColors.value);
-            if (target < 2 || target > 256) {
-                showError('目标颜色数必须在 2-256 之间');
-                return;
+        // 结果
+        if (hasBlob) body.appendChild(createResultDiv(pipe));
+
+        card.appendChild(header);
+        card.appendChild(body);
+        setupDrag(card, pipe, index);
+        return card;
+    }
+
+    // --- 参数控件 ---
+    function createParamControl(pd, pipe) {
+        const g = document.createElement('div');
+        g.className = 'param-group';
+
+        const label = document.createElement('label');
+        label.textContent = pd.label + ':';
+        g.appendChild(label);
+
+        if (pd.type === 'select') {
+            const sel = document.createElement('select');
+            for (const o of pd.options) {
+                const opt = document.createElement('option');
+                opt.value = o.value; opt.textContent = o.label;
+                if (String(pipe.params[pd.key]) === String(o.value)) opt.selected = true;
+                sel.appendChild(opt);
+            }
+            sel.addEventListener('change', () => { updateParam(pipelineState, pipe.id, pd.key, parseInt(sel.value)); renderPipeline(); });
+            g.appendChild(sel);
+        } else if (pd.type === 'range') {
+            const input = document.createElement('input');
+            input.type = 'range'; input.min = pd.min; input.max = pd.max; input.step = pd.step;
+            input.value = pipe.params[pd.key];
+            const val = document.createElement('span');
+            val.className = 'range-val'; val.textContent = parseFloat(input.value).toFixed(1);
+            input.addEventListener('input', () => { val.textContent = parseFloat(input.value).toFixed(1); });
+            input.addEventListener('change', () => { updateParam(pipelineState, pipe.id, pd.key, parseFloat(input.value)); renderPipeline(); });
+            g.appendChild(input); g.appendChild(val);
+        } else if (pd.type === 'number') {
+            const input = document.createElement('input');
+            input.type = 'number'; input.min = pd.min; input.max = pd.max;
+            input.value = pipe.params[pd.key]; input.style.width = '80px';
+            input.addEventListener('change', () => { updateParam(pipelineState, pipe.id, pd.key, parseInt(input.value)); renderPipeline(); });
+            g.appendChild(input);
+        } else if (pd.type === 'color') {
+            const input = document.createElement('input');
+            input.type = 'color'; input.value = pipe.params[pd.key];
+            input.addEventListener('change', () => { updateParam(pipelineState, pipe.id, pd.key, input.value); renderPipeline(); });
+            g.appendChild(input);
+        }
+        return g;
+    }
+
+    // --- 结果区 ---
+    function createResultDiv(pipe) {
+        const reg = PIPE_REGISTRY[pipe.type];
+        const blob = pipelineState.blobs[pipe.id];
+        const div = document.createElement('div');
+        div.className = 'pipe-result';
+
+        // 缩放
+        const zr = document.createElement('div');
+        zr.className = 'zoom-row';
+        const zoomLabel = document.createElement('span');
+        zoomLabel.className = 'zoom-val'; zoomLabel.textContent = '100%';
+        const mkZBtn = (text, dir) => {
+            const b = document.createElement('button'); b.textContent = text;
+            return b;
+        };
+        const zOut = mkZBtn('-', -1);
+        const zIn = mkZBtn('+', 1);
+        const zReset = mkZBtn('重置', 0);
+        zr.appendChild(zOut); zr.appendChild(zoomLabel); zr.appendChild(zIn); zr.appendChild(zReset);
+        div.appendChild(zr);
+
+        // 图片
+        const vp = document.createElement('div');
+        vp.className = 'result-viewport';
+        const img = document.createElement('img');
+        img.className = reg.resultType === 'pixelated' ? 'pixelated' : '';
+        img.src = URL.createObjectURL(blob);
+        vp.appendChild(img);
+        div.appendChild(vp);
+
+        // 颜色信息
+        const ci = document.createElement('p');
+        ci.className = 'color-info';
+        img.onload = () => { ci.textContent = '颜色数: ' + countColors(img); };
+        div.appendChild(ci);
+
+        // 缩放事件
+        zoomScales[pipe.id] = 1;
+        const doZoom = dir => {
+            if (dir === 0) zoomScales[pipe.id] = 1;
+            else { zoomScales[pipe.id] *= (dir > 0 ? 2 : 0.5); zoomScales[pipe.id] = Math.max(0.25, Math.min(zoomScales[pipe.id], 32)); }
+            img.style.width = (zoomScales[pipe.id] * 100) + '%';
+            zoomLabel.textContent = Math.round(zoomScales[pipe.id] * 100) + '%';
+        };
+        zOut.addEventListener('click', () => doZoom(-1));
+        zIn.addEventListener('click', () => doZoom(1));
+        zReset.addEventListener('click', () => doZoom(0));
+
+        return div;
+    }
+
+    // ============================================================
+    // 拖拽排序
+    // ============================================================
+
+    function setupDrag(card, pipe, index) {
+        const handle = card.querySelector('.drag-handle');
+
+        handle.addEventListener('dragstart', e => {
+            e.dataTransfer.setData('text/plain', pipe.id);
+            e.dataTransfer.effectAllowed = 'move';
+            requestAnimationFrame(() => card.classList.add('dragging'));
+        });
+
+        handle.addEventListener('dragend', () => {
+            card.classList.remove('dragging');
+            document.querySelectorAll('.pipe-card').forEach(c => c.classList.remove('drag-over-top', 'drag-over-bottom'));
+        });
+
+        card.addEventListener('dragover', e => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const rect = card.getBoundingClientRect();
+            card.classList.remove('drag-over-top', 'drag-over-bottom');
+            card.classList.add(e.clientY < rect.top + rect.height / 2 ? 'drag-over-top' : 'drag-over-bottom');
+        });
+
+        card.addEventListener('dragleave', () => card.classList.remove('drag-over-top', 'drag-over-bottom'));
+
+        card.addEventListener('drop', e => {
+            e.preventDefault();
+            card.classList.remove('drag-over-top', 'drag-over-bottom');
+            const draggedId = e.dataTransfer.getData('text/plain');
+            if (draggedId === pipe.id) return;
+            const fromIdx = pipelineState.pipes.findIndex(p => p.id === draggedId);
+            if (fromIdx === -1) return;
+            const rect = card.getBoundingClientRect();
+            const insertAfter = e.clientY >= rect.top + rect.height / 2;
+            const toIdx = insertAfter ? index + 1 : index;
+            movePipe(pipelineState, fromIdx, toIdx);
+            renderPipeline();
+        });
+    }
+
+    // ============================================================
+    // 管线执行
+    // ============================================================
+
+    async function executePipe(index) {
+        const pipe = pipelineState.pipes[index];
+        const reg = PIPE_REGISTRY[pipe.type];
+        const inputBlob = index === 0 ? selectedFile : getInputBlob(pipelineState, index);
+        if (!inputBlob) throw new Error('缺少输入图像');
+
+        // 更新卡片 UI
+        const card = pipelineFlow.querySelector(`[data-pipe-id="${pipe.id}"]`);
+        if (card) {
+            card.className = 'pipe-card running expanded';
+            card.querySelector('.pipe-status').textContent = '执行中...';
+        }
+        showLoading(reg.label + ' 处理中...');
+
+        try {
+            const fd = new FormData();
+            fd.append('image', inputBlob, index === 0 ? selectedFile.name : 'input.png');
+            for (const [k, v] of Object.entries(pipe.params)) fd.append(k, v);
+
+            const res = await fetch(reg.endpoint, { method: 'POST', body: fd });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ detail: '处理失败' }));
+                throw new Error(err.detail || '处理失败');
             }
 
-            hideError();
-            optimizeBtn.disabled = true;
-            optimizeBtn.textContent = '优化中...';
+            pipelineState.blobs[pipe.id] = await res.blob();
+            pipelineState.executedUpTo = Math.max(pipelineState.executedUpTo, index);
+        } finally {
+            hideLoading();
+        }
+    }
 
-            const formData = new FormData();
-            formData.append('image', pixelatedBlob, 'pixelated.png');
-            formData.append('target_colors', target);
+    async function runSingle(index) {
+        hideError(); isExecuting = true;
+        try { await executePipe(index); }
+        catch (e) { showError(e.message); }
+        finally { isExecuting = false; renderPipeline(); }
+    }
 
-            try {
-                const response = await fetch('/optimize-colors', {
-                    method: 'POST',
-                    body: formData
-                });
+    async function runAll() {
+        if (!selectedFile || isExecuting) return;
+        hideError(); isExecuting = true;
+        try {
+            for (let i = 0; i < pipelineState.pipes.length; i++) await executePipe(i);
+        } catch (e) { showError(e.message); }
+        finally { isExecuting = false; renderPipeline(); }
+    }
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || '优化失败');
-                }
+    async function runFrom(startIndex) {
+        if (!selectedFile || isExecuting) return;
+        hideError(); isExecuting = true;
+        try {
+            for (let i = startIndex; i < pipelineState.pipes.length; i++) await executePipe(i);
+        } catch (e) { showError(e.message); }
+        finally { isExecuting = false; renderPipeline(); }
+    }
 
-                const blob = await response.blob();
-                optimizedBlob = blob;
-                const url = URL.createObjectURL(blob);
-                optimizedImage.src = url;
-                optimizedBox.style.display = 'block';
+    // ============================================================
+    // 工具栏
+    // ============================================================
 
-                // 重置优化后背景统一状态
-                unifiedPostBlob = null;
-                document.getElementById('unifiedPostBox').style.display = 'none';
-                document.getElementById('bgUnifyPostToggle').checked = false;
-                document.getElementById('bgUnifyPostParams').style.display = 'none';
+    function updateToolbar() {
+        executeAllBtn.disabled = !selectedFile || isExecuting;
+    }
 
-                // 统计优化后的颜色数
-                const imgEl = new Image();
-                imgEl.onload = () => {
-                    const colorCount = countColors(imgEl);
-                    optimizedColorInfo.textContent = `优化后颜色数: ${colorCount} (目标: ${target})`;
-                };
-                imgEl.src = url;
-
-            } catch (err) {
-                showError(err.message);
-            } finally {
-                optimizeBtn.textContent = '颜色优化';
-                optimizeBtn.disabled = false;
-            }
-        });
-
-        // 优化后背景统一
-        const bgUnifyPostToggle = document.getElementById('bgUnifyPostToggle');
-        const bgUnifyPostParams = document.getElementById('bgUnifyPostParams');
-        const bgTolerancePost = document.getElementById('bgTolerancePost');
-        const bgTolerancePostVal = document.getElementById('bgTolerancePostVal');
-        const bgTargetColorPost = document.getElementById('bgTargetColorPost');
-        const bgUnifyPostBtn = document.getElementById('bgUnifyPostBtn');
-        const unifiedPostBox = document.getElementById('unifiedPostBox');
-        const unifiedPostImage = document.getElementById('unifiedPostImage');
-        const downloadUnifiedPostBtn = document.getElementById('downloadUnifiedPostBtn');
-
-        bgUnifyPostToggle.addEventListener('change', () => {
-            bgUnifyPostParams.style.display = bgUnifyPostToggle.checked ? 'block' : 'none';
-            if (!bgUnifyPostToggle.checked) {
-                unifiedPostBox.style.display = 'none';
-                unifiedPostBlob = null;
-            }
-        });
-
-        bgTolerancePost.addEventListener('input', () => {
-            bgTolerancePostVal.textContent = parseFloat(bgTolerancePost.value).toFixed(1);
-        });
-
-        bgUnifyPostBtn.addEventListener('click', async () => {
-            if (!optimizedBlob) return;
-
-            bgUnifyPostBtn.disabled = true;
-            bgUnifyPostBtn.textContent = '处理中...';
-
-            const formData = new FormData();
-            formData.append('image', optimizedBlob, 'optimized.png');
-            formData.append('tolerance', bgTolerancePost.value);
-            formData.append('target_color', bgTargetColorPost.value);
-
-            try {
-                const response = await fetch('/unify-background', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || '背景统一失败');
-                }
-
-                const blob = await response.blob();
-                unifiedPostBlob = blob;
-                unifiedPostImage.src = URL.createObjectURL(blob);
-                unifiedPostBox.style.display = 'block';
-
-            } catch (err) {
-                showError(err.message);
-            } finally {
-                bgUnifyPostBtn.textContent = '统一背景';
-                bgUnifyPostBtn.disabled = false;
-            }
-        });
-
-        // 下载最终图像
-        downloadUnifiedPostBtn.addEventListener('click', async () => {
-            if (!unifiedPostBlob) return;
-
-            const url = URL.createObjectURL(unifiedPostBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            const target = parseInt(targetColors.value);
-            a.download = `final_${target}colors_${selectedFile.name}`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        });
-
-        // 下载优化图像（原始像素网格尺寸）
-        downloadOptimizedBtn.addEventListener('click', async () => {
-            if (!optimizedBlob) return;
-
-            const target = parseInt(targetColors.value);
-            const url = URL.createObjectURL(optimizedBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `optimized_${target}colors_${selectedFile.name}`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        });
-
-        function showError(message) {
-            error.textContent = message;
-            error.classList.add('show');
+    function populateMenus() {
+        // 添加步骤菜单
+        const addMenu = $('addPipeMenu');
+        for (const [type, reg] of Object.entries(PIPE_REGISTRY)) {
+            const btn = document.createElement('button');
+            btn.className = 'dropdown-item'; btn.textContent = reg.label;
+            btn.addEventListener('mousedown', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                addPipe(pipelineState, type);
+                renderPipeline();
+                closeAllDropdowns();
+            });
+            addMenu.appendChild(btn);
         }
 
-        function hideError() {
-            error.classList.remove('show');
+        // 预设菜单
+        const presetMenu = $('presetMenu');
+        for (const [key, preset] of Object.entries(PIPELINE_PRESETS)) {
+            const btn = document.createElement('button');
+            btn.className = 'dropdown-item'; btn.textContent = preset.label;
+            btn.addEventListener('mousedown', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                pipelineState = createPipelineState(preset.pipes);
+                renderPipeline();
+                closeAllDropdowns();
+            });
+            presetMenu.appendChild(btn);
         }
+    }
 
-        // 缩放控制
-        const zoomScales = {};
-        const ZOOM_STEP = 2;  // 每次放大/缩小 2 倍
+    function toggleDropdown(menuId) {
+        const menu = $(menuId);
+        const open = menu.classList.contains('show');
+        closeAllDropdowns();
+        if (!open) menu.classList.add('show');
+    }
 
-        function zoom(imgId, direction) {
-            const img = document.getElementById(imgId);
-            const label = document.getElementById('zoom-' + imgId);
-            if (!zoomScales[imgId]) zoomScales[imgId] = 1;
+    function closeAllDropdowns() {
+        document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.remove('show'));
+    }
 
-            if (direction === 0) {
-                zoomScales[imgId] = 1;
-            } else {
-                zoomScales[imgId] *= (direction > 0 ? ZOOM_STEP : 1 / ZOOM_STEP);
-                zoomScales[imgId] = Math.max(0.25, Math.min(zoomScales[imgId], 32));
-            }
+    $('addPipeBtn').addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); toggleDropdown('addPipeMenu'); });
+    $('presetBtn').addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); toggleDropdown('presetMenu'); });
+    document.addEventListener('mousedown', e => { if (!e.target.closest('.dropdown')) closeAllDropdowns(); });
 
-            const scale = zoomScales[imgId];
-            img.style.width = (scale * 100) + '%';
-            label.textContent = Math.round(scale * 100) + '%';
+    executeAllBtn.addEventListener('click', runAll);
+
+    // ============================================================
+    // 保存/加载配置
+    // ============================================================
+
+    const SAVED_CONFIGS_KEY = 'pixelization_saved_configs';
+
+    function loadSavedConfigs() {
+        try { return JSON.parse(localStorage.getItem(SAVED_CONFIGS_KEY)) || {}; }
+        catch (e) { return {}; }
+    }
+
+    function saveSavedConfigs(configs) {
+        try { localStorage.setItem(SAVED_CONFIGS_KEY, JSON.stringify(configs)); } catch (e) {}
+    }
+
+    const saveForm = $('saveForm');
+    const saveConfigName = $('saveConfigName');
+
+    $('saveConfigBtn').addEventListener('click', () => {
+        saveForm.classList.add('show');
+        $('saveConfigBtn').style.display = 'none';
+        saveConfigName.value = '';
+        saveConfigName.focus();
+    });
+
+    $('saveCancelBtn').addEventListener('click', () => {
+        saveForm.classList.remove('show');
+        $('saveConfigBtn').style.display = '';
+    });
+
+    function doSaveConfig() {
+        const name = saveConfigName.value.trim();
+        if (!name) { saveConfigName.focus(); return; }
+        const configs = loadSavedConfigs();
+        configs[name] = pipelineState.pipes.map(p => ({ type: p.type, params: p.params }));
+        saveSavedConfigs(configs);
+        saveForm.classList.remove('show');
+        $('saveConfigBtn').style.display = '';
+        populateSavedConfigMenu();
+    }
+
+    $('saveConfirmBtn').addEventListener('click', doSaveConfig);
+    saveConfigName.addEventListener('keydown', e => { if (e.key === 'Enter') doSaveConfig(); });
+
+    // "我的配置" 下拉
+    function populateSavedConfigMenu() {
+        const menu = $('savedConfigMenu');
+        menu.innerHTML = '';
+        const configs = loadSavedConfigs();
+        const names = Object.keys(configs);
+        if (names.length === 0) {
+            const hint = document.createElement('div');
+            hint.style.cssText = 'padding:10px 16px;font-size:12px;color:#999;';
+            hint.textContent = '暂无保存的配置';
+            menu.appendChild(hint);
+            return;
         }
+        for (const name of names) {
+            const item = document.createElement('div');
+            item.className = 'dropdown-item saved';
+            const label = document.createElement('span');
+            label.textContent = name;
+            label.style.cursor = 'pointer';
+            label.style.flex = '1';
+            label.addEventListener('mousedown', e => {
+                e.preventDefault(); e.stopPropagation();
+                const pipes = configs[name];
+                pipelineState = { pipes: pipes.map(p => ({ type: p.type, id: nextPipeId(), params: { ...defaultParams(p.type), ...p.params } })), blobs: {}, executedUpTo: -1 };
+                for (const p of pipelineState.pipes) pipelineState.blobs[p.id] = null;
+                renderPipeline();
+                closeAllDropdowns();
+            });
+            const del = document.createElement('button');
+            del.className = 'del-config'; del.textContent = '\u00D7'; del.title = '删除';
+            del.addEventListener('mousedown', e => {
+                e.preventDefault(); e.stopPropagation();
+                const c = loadSavedConfigs();
+                delete c[name];
+                saveSavedConfigs(c);
+                populateSavedConfigMenu();
+            });
+            item.appendChild(label);
+            item.appendChild(del);
+            menu.appendChild(item);
+        }
+    }
+
+    $('savedConfigBtn').addEventListener('mousedown', e => {
+        e.preventDefault(); e.stopPropagation();
+        populateSavedConfigMenu();
+        toggleDropdown('savedConfigMenu');
+    });
+
+    $('resetBtn').addEventListener('click', () => {
+        localStorage.removeItem(STORAGE_KEY);
+        pipelineState = createPipelineState(PIPELINE_PRESETS['default'].pipes);
+        renderPipeline();
+    });
+
+    // ============================================================
+    // 初始化
+    // ============================================================
+
+    populateMenus();
+    renderPipeline();
     </script>
 </body>
 </html>
