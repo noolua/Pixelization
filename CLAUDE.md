@@ -8,6 +8,12 @@ SIGGRAPH Asia 2022 论文 "Make Your Own Sprites: Aliasing-Aware and Cell-Contro
 
 ## 常用命令
 
+### python3执行环境
+```bash
+# 首先进入python3的环境
+source ~/py39/bin/activate
+```
+
 ### Python 后端（FastAPI 开发服务器）
 ```bash
 # 安装依赖

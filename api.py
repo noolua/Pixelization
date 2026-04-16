@@ -15,6 +15,7 @@ from pathlib import Path
 from PIL import Image
 
 from test_pro import Model
+from bg_unify import unify_background, hex_to_rgb
 
 app = FastAPI(title="Pixelization API")
 
@@ -232,6 +233,51 @@ async def optimize_colors(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"颜色优化失败: {str(e)}")
+
+
+@app.post("/unify-background")
+async def unify_bg(
+    image: UploadFile = File(..., description="PNG/JPG 图像文件"),
+    tolerance: float = Form(5.0, description="Delta-E 容差，范围 1.0-20.0"),
+    target_color: str = Form("#808080", description="目标背景色，十六进制"),
+):
+    """
+    背景色统一接口
+
+    接收图像，将边缘连通的背景区域统一为指定颜色。
+    """
+    if tolerance < 1.0 or tolerance > 20.0:
+        raise HTTPException(status_code=400, detail="tolerance 必须在 1.0-20.0 之间")
+
+    if not image.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+        raise HTTPException(status_code=400, detail="仅支持 PNG/JPG 格式图像")
+
+    try:
+        # 解析目标颜色
+        try:
+            target_rgb = hex_to_rgb(target_color)
+        except (ValueError, IndexError):
+            raise HTTPException(status_code=400, detail="target_color 格式错误，示例: #808080")
+
+        contents = await image.read()
+
+        try:
+            img = Image.open(io.BytesIO(contents))
+            img.verify()
+        except Exception:
+            raise HTTPException(status_code=400, detail="无效的图像文件")
+
+        img = Image.open(io.BytesIO(contents))
+        result_img = unify_background(img, tolerance, target_rgb)
+
+        buf = io.BytesIO()
+        result_img.save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"背景统一失败: {str(e)}")
 
 
 @app.get("/health")
