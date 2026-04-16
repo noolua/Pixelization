@@ -493,6 +493,40 @@
                     <div style="text-align: center;">
                         <button id="downloadOptimizedBtn" class="download-btn">下载优化图像</button>
                     </div>
+                    <div class="bg-unify-post" id="bgUnifyPostControls" style="margin-top:15px;padding-top:15px;border-top:1px solid #eee;">
+                        <label class="bg-unify-toggle">
+                            <input type="checkbox" id="bgUnifyPostToggle">
+                            背景色统一
+                        </label>
+                        <div id="bgUnifyPostParams" style="display:none;margin-top:10px;">
+                            <div class="control-group" style="margin-bottom:8px;">
+                                <label>容差:</label>
+                                <input type="range" id="bgTolerancePost" min="1" max="20" step="0.5" value="5.0">
+                                <span id="bgTolerancePostVal" class="tolerance-val">5.0</span>
+                            </div>
+                            <div class="control-group" style="margin-bottom:8px;">
+                                <label>目标色:</label>
+                                <input type="color" id="bgTargetColorPost" value="#808080"
+                                       style="width:40px;height:32px;padding:2px;cursor:pointer;border:1px solid #ddd;border-radius:4px;">
+                            </div>
+                            <button id="bgUnifyPostBtn">统一背景</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="image-box" id="unifiedPostBox" style="display:none;">
+                    <h3>优化后背景统一</h3>
+                    <div class="zoom-controls">
+                        <button onclick="zoom('unifiedPostImage', -1)">-</button>
+                        <span class="zoom-level" id="zoom-unifiedPostImage">100%</span>
+                        <button onclick="zoom('unifiedPostImage', 1)">+</button>
+                        <button onclick="zoom('unifiedPostImage', 0)">重置</button>
+                    </div>
+                    <div class="image-viewport">
+                        <img id="unifiedPostImage" class="pixelated-preview" src="" alt="优化后背景统一">
+                    </div>
+                    <div style="text-align: center;">
+                        <button id="downloadUnifiedPostBtn" class="download-btn">下载最终图像</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -522,6 +556,7 @@
         let pixelatedBlob = null;
         let optimizedBlob = null;
         let unifiedBlob = null;
+        let unifiedPostBlob = null;
 
         // 点击上传区域触发文件选择
         uploadArea.addEventListener('click', () => {
@@ -772,6 +807,12 @@
                 optimizedImage.src = url;
                 optimizedBox.style.display = 'block';
 
+                // 重置优化后背景统一状态
+                unifiedPostBlob = null;
+                document.getElementById('unifiedPostBox').style.display = 'none';
+                document.getElementById('bgUnifyPostToggle').checked = false;
+                document.getElementById('bgUnifyPostParams').style.display = 'none';
+
                 // 统计优化后的颜色数
                 const imgEl = new Image();
                 imgEl.onload = () => {
@@ -786,6 +827,79 @@
                 optimizeBtn.textContent = '颜色优化';
                 optimizeBtn.disabled = false;
             }
+        });
+
+        // 优化后背景统一
+        const bgUnifyPostToggle = document.getElementById('bgUnifyPostToggle');
+        const bgUnifyPostParams = document.getElementById('bgUnifyPostParams');
+        const bgTolerancePost = document.getElementById('bgTolerancePost');
+        const bgTolerancePostVal = document.getElementById('bgTolerancePostVal');
+        const bgTargetColorPost = document.getElementById('bgTargetColorPost');
+        const bgUnifyPostBtn = document.getElementById('bgUnifyPostBtn');
+        const unifiedPostBox = document.getElementById('unifiedPostBox');
+        const unifiedPostImage = document.getElementById('unifiedPostImage');
+        const downloadUnifiedPostBtn = document.getElementById('downloadUnifiedPostBtn');
+
+        bgUnifyPostToggle.addEventListener('change', () => {
+            bgUnifyPostParams.style.display = bgUnifyPostToggle.checked ? 'block' : 'none';
+            if (!bgUnifyPostToggle.checked) {
+                unifiedPostBox.style.display = 'none';
+                unifiedPostBlob = null;
+            }
+        });
+
+        bgTolerancePost.addEventListener('input', () => {
+            bgTolerancePostVal.textContent = parseFloat(bgTolerancePost.value).toFixed(1);
+        });
+
+        bgUnifyPostBtn.addEventListener('click', async () => {
+            if (!optimizedBlob) return;
+
+            bgUnifyPostBtn.disabled = true;
+            bgUnifyPostBtn.textContent = '处理中...';
+
+            const formData = new FormData();
+            formData.append('image', optimizedBlob, 'optimized.png');
+            formData.append('tolerance', bgTolerancePost.value);
+            formData.append('target_color', bgTargetColorPost.value);
+
+            try {
+                const response = await fetch('/unify-background', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || '背景统一失败');
+                }
+
+                const blob = await response.blob();
+                unifiedPostBlob = blob;
+                unifiedPostImage.src = URL.createObjectURL(blob);
+                unifiedPostBox.style.display = 'block';
+
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                bgUnifyPostBtn.textContent = '统一背景';
+                bgUnifyPostBtn.disabled = false;
+            }
+        });
+
+        // 下载最终图像
+        downloadUnifiedPostBtn.addEventListener('click', async () => {
+            if (!unifiedPostBlob) return;
+
+            const url = URL.createObjectURL(unifiedPostBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            const target = parseInt(targetColors.value);
+            a.download = `final_${target}colors_${selectedFile.name}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         });
 
         // 下载优化图像（原始像素网格尺寸）
