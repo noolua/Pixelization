@@ -39,6 +39,15 @@
         .pipeline-section { background: white; border-radius: 12px; padding: 30px;
                             box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 20px; }
 
+        /* Pipeline Title */
+        .pipeline-title { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
+        .pipeline-title input[type="text"] { font-size: 18px; font-weight: 600; color: #333;
+                                             border: 1px solid transparent; border-radius: 4px;
+                                             padding: 4px 8px; outline: none; background: transparent;
+                                             flex: 1; max-width: 400px; }
+        .pipeline-title input[type="text"]:hover { border-color: #eee; }
+        .pipeline-title input[type="text"]:focus { border-color: #007aff; background: #fafafa; }
+
         /* Toolbar */
         .pipeline-toolbar { display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap;
                             align-items: center; }
@@ -179,6 +188,9 @@
         </div>
 
         <div class="pipeline-section" id="pipelineSection">
+            <div class="pipeline-title">
+                <input type="text" id="pipelineName" value="默认管线" placeholder="管线名称" maxlength="30">
+            </div>
             <div class="pipeline-toolbar">
                 <div class="dropdown" id="addPipeDropdown">
                     <button class="toolbar-btn" id="addPipeBtn">+ 添加步骤</button>
@@ -202,6 +214,10 @@
                     <button class="cancel-btn" id="saveCancelBtn">取消</button>
                 </div>
                 <div style="flex:1;"></div>
+                <button class="toolbar-btn" id="importBtn">导入</button>
+                <button class="toolbar-btn" id="exportBtn">导出</button>
+                <input type="file" id="importFileInput" accept=".json" style="display:none;">
+                <div class="toolbar-sep"></div>
                 <button class="toolbar-btn danger" id="resetBtn">重置默认</button>
             </div>
             <div class="pipeline-flow" id="pipelineFlow"></div>
@@ -358,6 +374,7 @@
     let pipelineState = loadPipeline();
     let selectedFile = null;
     let isExecuting = false;
+    let pipelineName = '默认管线';
     const zoomScales = {};
 
     const $ = id => document.getElementById(id);
@@ -447,6 +464,7 @@
             pipelineFlow.appendChild(createPipeCard(pipe, idx));
         });
         updateToolbar();
+        syncTitle();
         savePipeline(pipelineState);
     }
 
@@ -777,6 +795,7 @@
                 e.preventDefault();
                 e.stopPropagation();
                 pipelineState = createPipelineState(preset.pipes);
+                pipelineName = preset.label;
                 renderPipeline();
                 closeAllDropdowns();
             });
@@ -870,6 +889,7 @@
                 const pipes = configs[name];
                 pipelineState = { pipes: pipes.map(p => ({ type: p.type, id: nextPipeId(), params: { ...defaultParams(p.type), ...p.params } })), blobs: {}, executedUpTo: -1 };
                 for (const p of pipelineState.pipes) pipelineState.blobs[p.id] = null;
+                pipelineName = name;
                 renderPipeline();
                 closeAllDropdowns();
             });
@@ -894,9 +914,70 @@
         toggleDropdown('savedConfigMenu');
     });
 
+    // ============================================================
+    // 管线名称
+    // ============================================================
+
+    const pipelineNameInput = $('pipelineName');
+
+    pipelineNameInput.addEventListener('change', () => {
+        pipelineName = pipelineNameInput.value.trim() || '未命名管线';
+        pipelineNameInput.value = pipelineName;
+        savePipeline(pipelineState);
+    });
+
+    function syncTitle() {
+        pipelineNameInput.value = pipelineName;
+    }
+
+    // ============================================================
+    // 导入/导出全部配置 JSON
+    // ============================================================
+
+    $('exportBtn').addEventListener('click', () => {
+        const configs = loadSavedConfigs();
+        if (Object.keys(configs).length === 0) { showError('暂无已保存的配置'); return; }
+        const blob = new Blob([JSON.stringify(configs, null, 2)], { type: 'application/json' });
+        triggerDownload(blob, 'pixelization_configs.json');
+    });
+
+    const importFileInput = $('importFileInput');
+
+    $('importBtn').addEventListener('click', () => importFileInput.click());
+
+    importFileInput.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+            try {
+                const data = JSON.parse(ev.target.result);
+                if (typeof data !== 'object' || Array.isArray(data)) throw new Error('格式错误，应为 { "名称": [步骤] }');
+                const existing = loadSavedConfigs();
+                let count = 0;
+                for (const [name, pipes] of Object.entries(data)) {
+                    if (!Array.isArray(pipes)) continue;
+                    const valid = pipes.filter(p => p.type && PIPE_REGISTRY[p.type]);
+                    if (valid.length === 0) continue;
+                    existing[name] = valid.map(p => ({ type: p.type, params: p.params }));
+                    count++;
+                }
+                if (count === 0) throw new Error('文件中没有有效配置');
+                saveSavedConfigs(existing);
+                populateSavedConfigMenu();
+                hideError();
+            } catch (err) {
+                showError('导入失败: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
+        importFileInput.value = '';
+    });
+
     $('resetBtn').addEventListener('click', () => {
         localStorage.removeItem(STORAGE_KEY);
         pipelineState = createPipelineState(PIPELINE_PRESETS['default'].pipes);
+        pipelineName = '默认管线';
         renderPipeline();
     });
 
