@@ -516,25 +516,25 @@ static/
 
 ## 任务 15：Python 批量处理脚本（HTTP 模式）
 
-**状态：待实施**
+**状态：已完成** ✅
 
 读取 batch 配置 JSON，通过 HTTP API 调用远程服务批量处理图像目录，生成拼图输出。
 
-- [ ] 15.1 创建 `batch_process.py`
+- [x] 15.1 创建 `batch_process.py`
   - CLI 参数：`--config <batch.json> --input <图像目录> --output <输出目录> --server <API地址>`
   - `--server` 默认 `http://127.0.0.1:8000`，支持远程服务地址
   - 读取 batch 配置 JSON
   - 遍历输入目录中的所有图像文件
-- [ ] 15.2 单图处理逻辑（HTTP）
+- [x] 15.2 单图处理逻辑（HTTP）
   - 对每张图像，执行 batch.configs 中每个配置的 pipeline
   - 通过 `requests` 库 POST 到远程 API 端点（`/pixelize`、`/optimize-colors`、`/unify-background`）
   - 逐步串行执行 pipeline，上一步的输出作为下一步的输入
   - 收集每个配置的最终输出
-- [ ] 15.3 拼图生成
+- [x] 15.3 拼图生成
   - 实现与 JS 端相同的瓦片拼图算法
   - 使用 PIL/Pillow 拼图
   - 输出 PNG 到输出目录，命名规则：`{原图名}_tiled.png`
-- [ ] 15.4 容错与日志
+- [x] 15.4 容错与日志
   - 单张图像处理失败不阻塞，记录错误继续
   - 输出处理摘要（成功/失败/跳过数量）
 
