@@ -292,6 +292,82 @@
         input[type="file"] {
             display: none;
         }
+
+        .bg-unify-section {
+            display: none;
+            margin-top: 20px;
+            padding: 16px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border: 1px solid #eee;
+        }
+
+        .bg-unify-section.show {
+            display: block;
+        }
+
+        .bg-unify-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+            color: #333;
+            cursor: pointer;
+        }
+
+        .bg-unify-toggle input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .bg-unify-controls {
+            display: none;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #eee;
+        }
+
+        .bg-unify-controls.show {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .bg-unify-controls input[type="range"] {
+            width: 120px;
+            cursor: pointer;
+        }
+
+        .bg-unify-controls .tolerance-val {
+            font-size: 13px;
+            color: #666;
+            min-width: 30px;
+        }
+
+        .bg-unify-preview {
+            display: none;
+            margin-top: 12px;
+            text-align: center;
+        }
+
+        .bg-unify-preview.show {
+            display: block;
+        }
+
+        .bg-unify-preview img {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 8px;
+            border: 1px solid #eee;
+        }
+
+        .bg-unify-preview .label {
+            font-size: 13px;
+            color: #888;
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body>
@@ -305,6 +381,30 @@
                 <img id="previewImg" class="preview-img" src="" alt="预览">
             </div>
             <input type="file" id="fileInput" accept="image/png,image/jpeg,image/jpg">
+
+            <div class="bg-unify-section" id="bgUnifySection">
+                <label class="bg-unify-toggle">
+                    <input type="checkbox" id="bgUnifyToggle">
+                    启用背景色统一
+                </label>
+                <div class="bg-unify-controls" id="bgUnifyControls">
+                    <div class="control-group">
+                        <label for="bgTolerance">容差:</label>
+                        <input type="range" id="bgTolerance" min="1" max="20" step="0.5" value="5.0">
+                        <span class="tolerance-val" id="bgToleranceVal">5.0</span>
+                    </div>
+                    <div class="control-group">
+                        <label for="bgTargetColor">目标色:</label>
+                        <input type="color" id="bgTargetColor" value="#808080"
+                               style="width:40px;height:32px;padding:2px;cursor:pointer;border:1px solid #ddd;border-radius:4px;">
+                    </div>
+                    <button id="bgUnifyBtn" disabled>统一背景</button>
+                </div>
+                <div class="bg-unify-preview" id="bgUnifyPreview">
+                    <img id="bgUnifyPreviewImg" src="" alt="背景统一预览">
+                    <p class="label">背景统一预览</p>
+                </div>
+            </div>
 
             <div class="controls">
                 <div class="control-group">
@@ -347,6 +447,18 @@
                     </div>
                     <div class="image-viewport">
                         <img id="originalImage" src="" alt="原图">
+                    </div>
+                </div>
+                <div class="image-box" id="unifiedBox" style="display:none;">
+                    <h3>背景统一</h3>
+                    <div class="zoom-controls">
+                        <button onclick="zoom('unifiedImage', -1)">-</button>
+                        <span class="zoom-level" id="zoom-unifiedImage">100%</span>
+                        <button onclick="zoom('unifiedImage', 1)">+</button>
+                        <button onclick="zoom('unifiedImage', 0)">重置</button>
+                    </div>
+                    <div class="image-viewport">
+                        <img id="unifiedImage" src="" alt="背景统一结果">
                     </div>
                 </div>
                 <div class="image-box">
@@ -409,6 +521,7 @@
         let selectedFile = null;
         let pixelatedBlob = null;
         let optimizedBlob = null;
+        let unifiedBlob = null;
 
         // 点击上传区域触发文件选择
         uploadArea.addEventListener('click', () => {
@@ -459,10 +572,78 @@
                 originalImage.src = e.target.result;
                 uploadArea.classList.add('has-file');
                 processBtn.disabled = false;
+                document.getElementById('bgUnifySection').classList.add('show');
+                // 重置背景统一状态
+                unifiedBlob = null;
+                document.getElementById('bgUnifyToggle').checked = false;
+                document.getElementById('bgUnifyControls').classList.remove('show');
+                document.getElementById('bgUnifyPreview').classList.remove('show');
+                document.getElementById('bgUnifyBtn').disabled = true;
                 hideError();
             };
             reader.readAsDataURL(file);
         }
+
+        // 背景统一 toggle
+        const bgUnifyToggle = document.getElementById('bgUnifyToggle');
+        const bgUnifyControls = document.getElementById('bgUnifyControls');
+        const bgTolerance = document.getElementById('bgTolerance');
+        const bgToleranceVal = document.getElementById('bgToleranceVal');
+        const bgTargetColor = document.getElementById('bgTargetColor');
+        const bgUnifyBtn = document.getElementById('bgUnifyBtn');
+        const bgUnifyPreview = document.getElementById('bgUnifyPreview');
+        const bgUnifyPreviewImg = document.getElementById('bgUnifyPreviewImg');
+        const unifiedBox = document.getElementById('unifiedBox');
+        const unifiedImage = document.getElementById('unifiedImage');
+
+        bgUnifyToggle.addEventListener('change', () => {
+            bgUnifyControls.classList.toggle('show', bgUnifyToggle.checked);
+            bgUnifyBtn.disabled = !bgUnifyToggle.checked;
+            if (!bgUnifyToggle.checked) {
+                bgUnifyPreview.classList.remove('show');
+                unifiedBlob = null;
+            }
+        });
+
+        bgTolerance.addEventListener('input', () => {
+            bgToleranceVal.textContent = parseFloat(bgTolerance.value).toFixed(1);
+        });
+
+        bgUnifyBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            bgUnifyBtn.disabled = true;
+            bgUnifyBtn.textContent = '处理中...';
+
+            const formData = new FormData();
+            formData.append('image', selectedFile);
+            formData.append('tolerance', bgTolerance.value);
+            formData.append('target_color', bgTargetColor.value);
+
+            try {
+                const response = await fetch('/unify-background', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || '背景统一失败');
+                }
+
+                const blob = await response.blob();
+                unifiedBlob = blob;
+                const url = URL.createObjectURL(blob);
+                bgUnifyPreviewImg.src = url;
+                bgUnifyPreview.classList.add('show');
+
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                bgUnifyBtn.textContent = '统一背景';
+                bgUnifyBtn.disabled = false;
+            }
+        });
 
         // 处理图像
         processBtn.addEventListener('click', async () => {
@@ -473,7 +654,9 @@
             processBtn.disabled = true;
 
             const formData = new FormData();
-            formData.append('image', selectedFile);
+            const inputBlob = (bgUnifyToggle.checked && unifiedBlob) ? unifiedBlob : selectedFile;
+            const inputName = (bgUnifyToggle.checked && unifiedBlob) ? 'unified.png' : selectedFile.name;
+            formData.append('image', inputBlob, inputName);
             formData.append('cell_size', cellSize.value);
 
             try {
@@ -492,6 +675,14 @@
                 const resultUrl = URL.createObjectURL(blob);
                 resultImage.src = resultUrl;
                 resultSection.classList.add('show');
+
+                // 如果使用了背景统一，显示统一结果列
+                if (bgUnifyToggle.checked && unifiedBlob) {
+                    unifiedBox.style.display = 'block';
+                    unifiedImage.src = URL.createObjectURL(unifiedBlob);
+                } else {
+                    unifiedBox.style.display = 'none';
+                }
 
                 // 计算并显示颜色数
                 const imgEl = new Image();

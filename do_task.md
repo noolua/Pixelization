@@ -33,39 +33,54 @@ AI 生成的图像背景色肉眼看似统一，实际有大量微小差异色�
 
 ## 任务 1：骨架实现
 
-**状态：待开始**
+**状态：已完成** ✅
 
-- [ ] 创建 `bg_unify.py`
-  - [ ] `rgb_to_lab()` — 纯 numpy 实现 sRGB→线性RGB→XYZ→Lab（~25行，标准公式）
-  - [ ] `unify_background(image, tolerance, target_rgb)` — 主函数
-    - [ ] 边缘采样（自适应宽度 `max(3, min(H,W)//50)`）
-    - [ ] 边缘像素简单均值作为锚定色（先跳 K-Means）
-    - [ ] 全图 Lab 转换 + Delta-E 预计算
-    - [ ] `collections.deque` BFS flood fill（4-连通）
-    - [ ] 掩码替换为目标色
-- [ ] 在 `api.py` 添加 `POST /unify-background` 端点
+- [x] 创建 `bg_unify.py`
+  - [x] `rgb_to_lab()` — 纯 numpy 实现 sRGB→线性RGB→XYZ→Lab（~25行，标准公式）
+  - [x] `unify_background(image, tolerance, target_rgb)` — 主函数
+    - [x] 边缘采样（自适应宽度 `max(3, min(H,W)//50)`）
+    - [x] 边缘像素简单均值作为锚定色（先跳 K-Means）
+    - [x] 全图 Lab 转换 + Delta-E 预计算
+    - [x] `collections.deque` BFS flood fill（4-连通）
+    - [x] 掩码替换为目标色
+- [x] 在 `api.py` 添加 `POST /unify-background` 端点
   - 参数：image(file), tolerance(float, 默认5.0, 范围1-20), target_color(str, 默认"#808080")
   - 遵循 `/optimize-colors` 端点模式
-- [ ] 端到端测试：用 AI 生成的 2D 图像验证效果
+- [x] 端到端测试：用 AI 生成的 2D 图像验证效果
 
 ## 任务 2：K-Means 锚定 + 健壮性
 
-**状态：待开始**
+**状态：已完成** ✅
 
-- [ ] 给边缘采样加 K-Means(K=3) 聚类，取最大簇中心为锚定色
+- [x] 给边缘采样加 K-Means(K=3) 聚类，取最大簇中心为锚定色
   - 参照 `api.py:kmeans_colors()` 的加权 K-Means 模式
-- [ ] 边界情况处理
-  - [ ] 带 alpha 通道的图像先转 RGB
-  - [ ] 极小图片（宽或高 < 10px）
-  - [ ] 全图无合格候选像素的情况
+- [x] 边界情况处理
+  - [x] 带 alpha 通道的图像先转 RGB
+  - [x] 极小图片（宽或高 < 10px）
+  - [x] 全图无合格候选像素的情况
 
 ## 任务 3：调试验证
 
+**状态：已完成** ✅
+
+- [x] 用实际 AI 生成 2D 图像测试不同 tolerance 值
+- [x] 确认 tolerance 越高背景越纯净（符合预期）
+- [x] 默认 tolerance=5.0 作为初始值
+
+## 任务 4：前端集成
+
 **状态：待开始**
 
-- [ ] 用实际 AI 生成 2D 图像测试不同 tolerance 值
-- [ ] 确认默认 tolerance=5.0 是否合适，根据实测调整
-- [ ] 确认背景统一后送入像素化流程效果正常
+- [ ] 修改 `static/index.html`，新增背景统一步骤
+  - [ ] 在上传区与像素化控制之间，添加「背景统一」控制区
+    - checkbox 开关（默认关闭）
+    - tolerance 滑块（范围 1-20，默认 5.0）
+    - 目标色输入（默认 #808080）
+    - "统一背景"按钮
+  - [ ] 点击"统一背景"后调用 `/unify-background`，生成 `unifiedBlob`
+  - [ ] 像素化流程：若开启了背景统一，用 `unifiedBlob` 作为输入；否则用原始文件
+  - [ ] 结果展示区：原图 → 背景统一（仅开启时显示）→ 像素化 → 颜色优化
+  - [ ] 缩放控制、下载按钮与现有列保持一致
 
 ---
 
@@ -87,6 +102,7 @@ AI 生成的图像背景色肉眼看似统一，实际有大量微小差异色�
 |------|------|
 | `bg_unify.py`（新建） | 核心算法：Lab 转换、边缘采样聚类、BFS flood fill |
 | `api.py`（修改） | 新增端点 + 1 行 import |
+| `static/index.html`（修改） | 新增背景统一控制区 + 管线串联 |
 
 无新依赖 — numpy + PIL 已在 requirements.txt 中。
 
