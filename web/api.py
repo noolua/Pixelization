@@ -1,9 +1,8 @@
 """
 像素化 Web 服务
-基于 test_pro.py 的 Model 类提供 HTTP 接口
 """
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import torch
@@ -33,7 +32,7 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 # 全局模型实例
 model = None
-MODEL_NAME = "demo"  # 默认模型名称，对应 checkpoints/demo/
+MODEL_NAME = "demo"
 
 
 def get_device():
@@ -62,10 +61,29 @@ async def startup_event():
     load_model()
 
 
+async def _read_image(image: UploadFile) -> Image.Image:
+    """读取上传图像，验证格式和有效性"""
+    if not image.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+        raise HTTPException(status_code=400, detail="仅支持 PNG/JPG 格式图像")
+    contents = await image.read()
+    try:
+        img = Image.open(io.BytesIO(contents))
+        img.verify()
+    except Exception:
+        raise HTTPException(status_code=400, detail="无效的图像文件")
+    return Image.open(io.BytesIO(contents))
+
+
+def _image_response(img: Image.Image) -> Response:
+    """将 PIL Image 转为 PNG HTTP Response"""
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png")
+
+
 @app.get("/")
 async def root():
     """根路径返回前端页面"""
-    from fastapi.responses import FileResponse
     return FileResponse(str(static_dir / "index.html"))
 
 
@@ -74,36 +92,13 @@ async def pixelize(
     image: UploadFile = File(..., description="PNG 图像文件"),
     cell_size: int = Form(4, description="像素化程度，范围 2-8"),
 ):
-    """
-    像素化接口
-
-    接收 PNG 图像和 cell_size 参数，返回原始像素网格尺寸的像素化图像。
-    缩放预览由前端 CSS 处理。
-    """
-    # 验证参数
+    """像素化接口"""
     if cell_size < 2 or cell_size > 8:
         raise HTTPException(status_code=400, detail="cell_size 必须在 2-8 之间")
 
-    # 验证文件格式
-    if not image.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-        raise HTTPException(status_code=400, detail="仅支持 PNG/JPG 格式图像")
-
     try:
-        contents = await image.read()
-
-        try:
-            img = Image.open(io.BytesIO(contents))
-            img.verify()
-        except Exception:
-            raise HTTPException(status_code=400, detail="无效的图像文件")
-
-        img = Image.open(io.BytesIO(contents))
-        result_img = pixelize_pipe(model, img, cell_size)
-
-        buf = io.BytesIO()
-        result_img.save(buf, format="PNG")
-        return Response(content=buf.getvalue(), media_type="image/png")
-
+        img = await _read_image(image)
+        return _image_response(pixelize_pipe(model, img, cell_size))
     except HTTPException:
         raise
     except Exception as e:
@@ -115,33 +110,13 @@ async def optimize_colors(
     image: UploadFile = File(..., description="PNG 图像文件"),
     target_colors: int = Form(32, description="目标颜色数，范围 2-256"),
 ):
-    """
-    K-Means 颜色优化接口
-
-    接收图像和目标颜色数，返回颜色减少后的图像
-    """
+    """K-Means 颜色优化接口"""
     if target_colors < 2 or target_colors > 256:
         raise HTTPException(status_code=400, detail="target_colors 必须在 2-256 之间")
 
-    if not image.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-        raise HTTPException(status_code=400, detail="仅支持 PNG/JPG 格式图像")
-
     try:
-        contents = await image.read()
-
-        try:
-            img = Image.open(io.BytesIO(contents))
-            img.verify()
-        except Exception:
-            raise HTTPException(status_code=400, detail="无效的图像文件")
-
-        img = Image.open(io.BytesIO(contents))
-        result_img = kmeans_colors(img, target_colors)
-
-        buf = io.BytesIO()
-        result_img.save(buf, format="PNG")
-        return Response(content=buf.getvalue(), media_type="image/png")
-
+        img = await _read_image(image)
+        return _image_response(kmeans_colors(img, target_colors))
     except HTTPException:
         raise
     except Exception as e:
@@ -154,39 +129,18 @@ async def unify_bg(
     tolerance: float = Form(5.0, description="Delta-E 容差，范围 1.0-20.0"),
     target_color: str = Form("#808080", description="目标背景色，十六进制"),
 ):
-    """
-    背景色统一接口
-
-    接收图像，将边缘连通的背景区域统一为指定颜色。
-    """
+    """背景色统一接口"""
     if tolerance < 1.0 or tolerance > 20.0:
         raise HTTPException(status_code=400, detail="tolerance 必须在 1.0-20.0 之间")
 
-    if not image.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-        raise HTTPException(status_code=400, detail="仅支持 PNG/JPG 格式图像")
+    try:
+        target_rgb = hex_to_rgb(target_color)
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=400, detail="target_color 格式错误，示例: #808080")
 
     try:
-        # 解析目标颜色
-        try:
-            target_rgb = hex_to_rgb(target_color)
-        except (ValueError, IndexError):
-            raise HTTPException(status_code=400, detail="target_color 格式错误，示例: #808080")
-
-        contents = await image.read()
-
-        try:
-            img = Image.open(io.BytesIO(contents))
-            img.verify()
-        except Exception:
-            raise HTTPException(status_code=400, detail="无效的图像文件")
-
-        img = Image.open(io.BytesIO(contents))
-        result_img = unify_background(img, tolerance, target_rgb)
-
-        buf = io.BytesIO()
-        result_img.save(buf, format="PNG")
-        return Response(content=buf.getvalue(), media_type="image/png")
-
+        img = await _read_image(image)
+        return _image_response(unify_background(img, tolerance, target_rgb))
     except HTTPException:
         raise
     except Exception as e:
@@ -203,7 +157,6 @@ if __name__ == "__main__":
     import uvicorn
     import os
 
-    # 从环境变量读取配置，默认只监听本地
     host = os.getenv("API_HOST", "127.0.0.1")
     port = int(os.getenv("API_PORT", "8000"))
 
