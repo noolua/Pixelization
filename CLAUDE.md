@@ -6,6 +6,40 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SIGGRAPH Asia 2022 论文 "Make Your Own Sprites: Aliasing-Aware and Cell-Controllable Pixelization" 的官方实现。将普通图像转换为像素风格艺术画，支持 2× 到 N× 的 cell size 控制。
 
+## 目录结构
+
+```
+Pixelization/
+├── web/                        # Python 应用
+│   ├── api.py                  # FastAPI 入口
+│   ├── batch_process.py        # 批量处理脚本
+│   ├── inference.py            # 模型推理封装（Model 类）
+│   ├── pipes/                  # 图像处理 pipe 包
+│   │   ├── __init__.py
+│   │   └── bg_unify.py
+│   ├── models/                 # 神经网络定义
+│   │   ├── __init__.py
+│   │   ├── basic_layer.py
+│   │   ├── c2pGen.py
+│   │   └── networks.py
+│   └── static/                 # 前端
+│       ├── index.html
+│       ├── style.css
+│       └── app.js
+│
+├── server/                     # Go 生产服务
+├── tests/                      # ONNX 验证 + 临时测试代码
+├── tools/                      # 模型转换工具脚本
+│   ├── export_onnx.py
+│   └── convert_fp16.py
+├── docs/                       # 文档
+├── downloads/                  # 模型权重
+├── build/                      # 构建输出
+│
+├── requirements.txt
+├── CLAUDE.md / bref.md / do_task.md / README.md / LICENSE.md
+```
+
 ## 常用命令
 
 ### python3执行环境
@@ -20,15 +54,10 @@ source ~/py39/bin/activate
 pip install -r requirements.txt
 
 # 启动 API 服务（默认 127.0.0.1:8000）
-python api.py
+cd web && python api.py
 
 # 通过环境变量配置
-API_HOST=0.0.0.0 API_PORT=8080 python api.py
-```
-
-### CLI 像素化
-```bash
-python test_pro.py --input <图片或目录> --cell_size 4 --model_name <模型名>
+API_HOST=0.0.0.0 API_PORT=8080 python web/api.py
 ```
 
 ### Go 后端（ONNX Runtime 生产服务）
@@ -36,14 +65,14 @@ python test_pro.py --input <图片或目录> --cell_size 4 --model_name <模型�
 cd server
 # 需要设置 ONNX Runtime 库路径
 export ONNX_RUNTIME_LIB=/path/to/libonnxruntime.dylib
-go run . -addr :8000 -model ../tests/onnx/pixelization.onnx -static ../static
+go run . -addr :8000 -model ../tests/onnx/pixelization.onnx -static ../web/static
 ```
 
 ### ONNX 模型导出与验证
 ```bash
-python tests/export_onnx.py    # 导出 PyTorch 模型为 ONNX
+python tools/export_onnx.py    # 导出 PyTorch 模型为 ONNX
 python tests/verify_onnx.py    # 验证 ONNX 输出与 PyTorch 一致性
-python tests/convert_fp16.py   # FP16 权重转换
+python tools/convert_fp16.py   # FP16 权重转换
 ```
 
 ## 架构
@@ -52,17 +81,18 @@ python tests/convert_fp16.py   # FP16 权重转换
 
 项目有两套功能等价的后端服务，API 接口完全一致：
 
-| | Python (api.py) | Go (server/) |
+| | Python (web/api.py) | Go (server/) |
 |---|---|---|
 | 用途 | 开发/调试 | 生产部署（无 Python 依赖） |
 | 推理引擎 | PyTorch 直接加载 .pth | ONNX Runtime |
-| 前端 | 共享 `static/index.html` | 共享 `static/index.html` |
+| 前端 | `web/static/` | `web/static/` |
 
 ### HTTP API 端点
 
 - `GET /` — 前端页面
 - `POST /pixelize` — 像素化（参数: image 文件, cell_size 2-8）
 - `POST /optimize-colors` — K-Means 颜色优化（参数: image 文件, target_colors 2-256）
+- `POST /unify-background` — 背景色统一（参数: image 文件, tolerance 1.0-20.0, target_color）
 - `GET /health` — 健康检查
 
 ### 推理流水线
@@ -72,16 +102,19 @@ python tests/convert_fp16.py   # FP16 权重转换
     → RGBEncoder → RGBDec(feature, cell_size_code) → AliasNet → 缩放输出
 ```
 
-关键模型组件（`models/`）：
-- **c2pGen.py** — C2P Generator，包含 RGBEncoder、RGBDecoder（StyleGAN2 风格调制的 MLP + cell_size_code）、MLP
-- **networks.py** — 网络工厂函数 `define_G()`，根据 net_type 创建对应网络（"c2pGen"、"antialias" 等）
-- **pixelization_model.py** — 训练用完整模型（CycleGAN 框架）
+关键模块（`web/`）：
+- **inference.py** — Model 类，封装模型加载和推理流程
+- **pipes/bg_unify.py** — 背景色统一 pipe
+- **models/c2pGen.py** — C2P Generator（含 RGBEncoder、RGBDecoder、AliasNet）
+- **models/networks.py** — 网络工厂函数 `define_G()`
+- **models/basic_layer.py** — 基础网络层
 
 ### 模型权重
 
-- `./alias_net.pth` — AliasNet 反锯齿网络（项目根目录）
-- `./pixelart_vgg19.pth` — VGG-19 结构提取器（项目根目录）
-- `./checkpoints/<model_name>/160_net_G_A.pth` — I2P Generator 权重
+所有权重文件位于 `downloads/` 目录：
+- `downloads/alias_net.pth` — AliasNet 反锯齿网络
+- `downloads/pixelart_vgg19.pth` — VGG-19 结构提取器
+- `downloads/160_net_G_A.pth` — I2P Generator 权重
 
 ### 设备支持
 

@@ -14,8 +14,8 @@ import os
 from pathlib import Path
 from PIL import Image
 
-from test_pro import Model
-from bg_unify import unify_background, hex_to_rgb
+from inference import Model
+from pipes.bg_unify import unify_background, hex_to_rgb
 
 app = FastAPI(title="Pixelization API")
 
