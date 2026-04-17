@@ -78,13 +78,18 @@ class Model():
 
   def pixelize_original_size(self, in_img, out_img, cell_size):
     """像素化并返回原始像素网格尺寸（不放大）"""
+    result = self.pixelize_image(Image.open(in_img).convert('RGB'), cell_size)
+    result.save(out_img)
+
+  def pixelize_image(self, pil_img: Image.Image, cell_size: int) -> Image.Image:
+    """像素化，接收 PIL Image，返回 PIL Image（纯内存）"""
+    pil_img = pil_img.convert('RGB')
     with torch.no_grad():
-      orig_img = Image.open(in_img).convert('RGB')
-      orig_width, orig_height = orig_img.size
+      orig_width, orig_height = pil_img.size
       target_w = orig_width // cell_size
       target_h = orig_height // cell_size
 
-      in_img = rescale(orig_img)
+      in_img = rescale(pil_img)
       width, height = in_img.size
       best_cell_size = 4
       in_img = in_img.resize(((width // cell_size) * best_cell_size, (height // cell_size) * best_cell_size),
@@ -94,7 +99,7 @@ class Model():
       feature = self.net.RGBEnc(in_t)
       images = self.net.RGBDec(feature, self.cell_size_code)
       out_t = self.alias_net(images)
-      save_original_size(out_t, out_img, cell_size, best_cell_size, target_w, target_h)
+      return to_image(out_t, target_w, target_h)
 
 
 def process(img):
@@ -122,6 +127,12 @@ def save(tensor, file, cell_size, best_cell_size=4):
 
 def save_original_size(tensor, file, cell_size, best_cell_size=4, target_w=None, target_h=None):
   """保存为原始像素网格尺寸（不放大）"""
+  img = to_image(tensor, target_w, target_h, best_cell_size)
+  img.save(file)
+
+
+def to_image(tensor, target_w=None, target_h=None, best_cell_size=4):
+  """将推理输出 tensor 转为 PIL Image"""
   img = tensor.data[0].cpu().float().numpy()
   img = (np.transpose(img, (1, 2, 0)) + 1) / 2.0 * 255.0
   img = img.astype(np.uint8)
@@ -130,4 +141,4 @@ def save_original_size(tensor, file, cell_size, best_cell_size=4, target_w=None,
     img = img.resize((target_w, target_h), Image.NEAREST)
   else:
     img = img.resize((img.size[0] // best_cell_size, img.size[1] // best_cell_size), Image.NEAREST)
-  img.save(file)
+  return img

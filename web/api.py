@@ -8,8 +8,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import torch
 import io
-import tempfile
-import os
 from pathlib import Path
 from PIL import Image
 
@@ -90,50 +88,26 @@ async def pixelize(
     if not image.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
         raise HTTPException(status_code=400, detail="仅支持 PNG/JPG 格式图像")
 
-    # 创建临时文件
-    temp_input = None
-    temp_output = None
-
     try:
-        # 读取上传的图像
         contents = await image.read()
 
-        # 验证是否为有效图像
         try:
             img = Image.open(io.BytesIO(contents))
             img.verify()
         except Exception:
             raise HTTPException(status_code=400, detail="无效的图像文件")
 
-        # 创建临时输入文件
-        temp_input = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-        temp_input.write(contents)
-        temp_input.close()
+        img = Image.open(io.BytesIO(contents))
+        result_img = model.pixelize_image(img, cell_size)
 
-        # 创建临时输出文件
-        temp_output = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-        temp_output.close()
-
-        # 调用模型进行像素化（始终返回原始像素网格尺寸）
-        model.pixelize_original_size(temp_input.name, temp_output.name, cell_size)
-
-        # 读取结果图像
-        with open(temp_output.name, "rb") as f:
-            result_bytes = f.read()
-
-        # 返回图像
-        return Response(content=result_bytes, media_type="image/png")
+        buf = io.BytesIO()
+        result_img.save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
 
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"处理失败: {str(e)}")
-    finally:
-        # 清理临时文件
-        if temp_input and os.path.exists(temp_input.name):
-            os.unlink(temp_input.name)
-        if temp_output and os.path.exists(temp_output.name):
-            os.unlink(temp_output.name)
 
 
 @app.post("/optimize-colors")
