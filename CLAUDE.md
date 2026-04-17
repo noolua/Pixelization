@@ -12,7 +12,6 @@ SIGGRAPH Asia 2022 论文 "Make Your Own Sprites: Aliasing-Aware and Cell-Contro
 Pixelization/
 ├── web/                        # Python 应用
 │   ├── api.py                  # FastAPI 入口
-│   ├── batch_process.py        # 批量处理脚本
 │   ├── inference.py            # 模型推理封装（Model 类）
 │   ├── pipes/                  # 图像处理 pipe 包
 │   │   ├── __init__.py
@@ -29,7 +28,8 @@ Pixelization/
 │
 ├── server/                     # Go 生产服务
 ├── tests/                      # ONNX 验证 + 临时测试代码
-├── tools/                      # 模型转换工具脚本
+├── tools/                      # 工具脚本
+│   ├── batch_process.py
 │   ├── export_onnx.py
 │   └── convert_fp16.py
 ├── docs/                       # 文档
