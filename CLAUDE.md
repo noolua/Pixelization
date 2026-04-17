@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目定位
 
-可配置管线的像素画生产工具，不是论文复现仓库。基于 SIGGRAPH Asia 2022 论文实现。
+可配置管线的像素画生产工具（PixelPipe），不是论文复现仓库。基于 SIGGRAPH Asia 2022 论文实现。
 
 ## 核心架构原则
 

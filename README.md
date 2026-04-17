@@ -1,4 +1,4 @@
-# Pixelization — 像素画生产工具
+# PixelPipe — 像素画生产工具
 
 基于 SIGGRAPH Asia 2022 论文 [*Make Your Own Sprites: Aliasing-Aware and Cell-Controllable Pixelization*](https://dl.acm.org/doi/pdf/10.1145/3550454.3555482) 的像素画生产工具。
 
