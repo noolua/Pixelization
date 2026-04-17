@@ -1,105 +1,79 @@
-# Make Your Own Sprites: Aliasing-Aware and Cell-Controllable Pixelization (SIGGRAPH Asia 2022)
-<img src=./teaser.jpg />
+# Pixelization — 像素画生产工具
 
-## Description
-This is the official implementation of the SIGGRAPH Asia 2022 paper "Make Your Own Sprites: Aliasing-Aware and Cell-Controllable Pixelization". Paper can be found [here](https://dl.acm.org/doi/pdf/10.1145/3550454.3555482) or downloaded from [here](https://orca.cardiff.ac.uk/id/eprint/152816/).
+基于 SIGGRAPH Asia 2022 论文 [*Make Your Own Sprites: Aliasing-Aware and Cell-Controllable Pixelization*](https://dl.acm.org/doi/pdf/10.1145/3550454.3555482) 的像素画生产工具。
 
-## ⭐⭐⭐Newest Update⭐⭐⭐
-`Test Pro`: We launch a new pixelization method based on original repository, which can produce pixelization result from 2× to N× (N could be any integer number). Please refer to the `Test Pro` section below.👾👾
+将普通图像转换为像素风格艺术画，提供可配置管线和批量处理能力。
 
-## Some Results
-<img src=./results/9562.png />
-<img src=./results/9844.png />
-<img src=./results/9962.png />
-<img src=./results/9982.png />
-©Tencent, ©Extend Interactive Co., Ltd, © Pablo Hernández and © Bee Square.
+## 功能
 
+- **像素化** — 神经网络驱动的像素化，支持 2× 到 8× cell size
+- **颜色优化** — K-Means 聚类减少颜色数
+- **背景统一** — Lab 空间 Delta-E 容差的背景色替换
+- **灰度** — 可量化灰阶（GameBoy 4 级、8 级阴影等）
+- **调色板映射** — 内置 PICO-8 / GameBoy / NES / C64 / Endesga 32 等复古调色板，支持有序抖动和 Floyd-Steinberg 抖动
+- **批量处理** — JSON 配置驱动，批量处理图像目录并生成拼图
+- **管线组合** — 前端可自由排列 pipe 顺序，实时预览中间结果
 
-## Video Demo
-Please see our [video demo](https://youtu.be/ElpXLF8nY1c) on YouTube.
+## 快速开始
 
-## User Feedback
-<img src=./feedback.jpg />
-See user testing feedback at https://twitter.com/santarh/status/1601251477355663361
+### 安装
 
-## Prerequisites
-- Linux
-- Python 3
-- NVIDIA GPU + CUDA CuDNN
-- pytorch >= 1.7.1 and torchvision >= 0.8.2
+```bash
+pip install -r requirements.txt
+```
 
-## Dataset
-The dataset is available at https://drive.google.com/file/d/1YAjcz6lScm-Gd2C5gj3iwZOhG5092fRo/view?usp=sharing.
+### 启动服务
 
-## Pretrained Models
-| Path | Description
-| :--- | :----------
-|[Structure Extractor](https://drive.google.com/file/d/1VRYKQOsNlE1w1LXje3yTRU5THN2MGdMM/view?usp=sharing) | A VGG-19 model pretrained on Multi-cell dataset.
-|[AliasNet](https://drive.google.com/file/d/17f2rKnZOpnO9ATwRXgqLz5u5AZsyDvq_/view?usp=sharing) | An encoder-decoder network pretrained on Aliasing dataset.
-|[I2PNet](https://drive.google.com/file/d/1i_8xL3stbLWNF4kdQJ50ZhnRFhSDh3Az/view?usp=sharing) | I2PNet.
-|[P2INet](https://drive.google.com/file/d/1z9SmQRPoIuBT_18mzclEd1adnFn2t78T/view?usp=sharing) | P2INet.
+```bash
+cd web && python api.py
+```
 
-Please read the License before use. Unauthorized commercial use is prohibited.
+浏览器打开 `http://127.0.0.1:8000` 即可使用。
 
-My email is in my profile.
+### 批量处理
 
-使用前请阅读License,禁止未经授权的商业使用
+```bash
+# 在 Web 界面设计管线 → 导出 batch 配置 JSON
+python tools/batch_process.py --config batch.json --input ./images --output ./output --server http://127.0.0.1:8000
+```
 
-## Test Pro
-Create empty directory ./checkpoints/YOUR_MODEL_NAME
+## HTTP API
 
-Put alias_net.pth and pixelart_vgg19.pth in ./ 
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/` | GET | 前端页面 |
+| `/pixelize` | POST | 像素化（cell_size 2-8） |
+| `/optimize-colors` | POST | K-Means 颜色优化（target_colors 2-256） |
+| `/unify-background` | POST | 背景色统一（tolerance, target_color） |
+| `/grayscale` | POST | 灰度（gray_levels: 0=连续, 2-256=量化） |
+| `/palette-map` | POST | 调色板映射（palette, dither） |
+| `/health` | GET | 健康检查 |
 
-Put 160_net_G_A.pth and 160_net_G_B.pth in ./checkpoints/YOUR_MODEL_NAME 
+所有 POST 端点接收 `image` 文件上传 + 表单参数，返回 PNG 图像。
 
-Create empty directory ./dataset/TEST_DATA/Input
+## 项目结构
 
-Put test images in ./dataset/TEST_DATA/Input
+```
+web/
+├── api.py              # FastAPI 入口
+├── pipes/              # 图像处理 pipe
+│   ├── pixelize.py     #   像素化（含模型加载）
+│   ├── optimize_colors.py  # 颜色优化
+│   ├── bg_unify.py     #   背景统一
+│   ├── grayscale.py    #   灰度
+│   └── palette_map.py  #   调色板映射
+├── models/             # 神经网络层定义
+└── static/             # 前端（HTML/CSS/JS）
 
-Run the following command to test:
+server/                 # Go 生产服务（ONNX Runtime）
+tools/                  # 工具脚本
+downloads/              # 模型权重
+```
 
-`python test_pro.py --input ./datasets/TEST_DATA/Input --cell_size 4 --model_name YOUR_MODEL_NAME`
+## 双后端
 
-`--input` could be a file or directory.
-
-`--cell_size` could be any integer number.
-
-## Train
-Create empty directory ./checkpoints/YOUR_MODEL_NAME
-
-Put alias_net.pth and pixelart_vgg19.pth in ./ 
-
-Put 160_net_G_A.pth and 160_net_G_B.pth in ./checkpoints/YOUR_MODEL_NAME 
-
-Download the dataset. Create two empty directories ./datasets/TRAIN_DATA/trainA and ./datasets/TRAIN_DATA/trainB.
-
-Put non-pixel art images in ./datasets/TRAIN_DATA/trainA and put multi-cell pixel arts in ./datasets/TRAIN_DATA/trainB.
-
-Run the following command to train:
-
-`python train.py --gpu_ids 0 --batch_size 2 --preprocess none --dataroot ./datasets/TRAIN_DATA/ --name YOUR_MODEL_NAME`
-
-The checkpoints and logs will be saved in ./checkpoints/YOUR_MODEL_NAME.
-
-## Test
-Create empty directory ./checkpoints/YOUR_MODEL_NAME
-
-Put alias_net.pth and pixelart_vgg19.pth in ./ 
-
-Put 160_net_G_A.pth and 160_net_G_B.pth in ./checkpoints/YOUR_MODEL_NAME 
-
-Create empty directory ./dataset/TEST_DATA/Input.
-
-Put test images in ./dataset/TEST_DATA/Input, and run `python prepare_data.py` to prepare data.
-
-Run the following command to test:
-
-`python test.py --gpu_ids 0 --batch_size 1 --preprocess none --num_test 4 --epoch WHICH_EPOCH --dataroot ./datasets/TEST_DATA/ --name YOUR_MODEL_NAME`
-
-The result will be saved in ./result/YOUR_MODEL_NAME.
+Python（FastAPI + PyTorch）用于开发调试，Go（ONNX Runtime）用于生产部署，API 接口一致。
 
 ## License
-Software Copyright License for non-commercial scientific research purposes. Please read carefully the [terms and conditions](https://github.com/WuZongWei6/Pixelization/blob/main/LICENSE.md) in the LICENSE file and any accompanying documentation before you download and/or use the Pixel Art and/or Non-pixel art dataset, model and software, (the "Data & Software"), including code, images, videos, textures, software, scripts, and animations. By downloading and/or using the Data & Software (including downloading, cloning, installing, and any other use of the corresponding github repository), you acknowledge that you have read these terms and conditions, understand them, and agree to be bound by them. If you do not agree with these terms and conditions, you must not download and/or use the Data & Software. Any infringement of the terms of this agreement will automatically terminate your rights under this [License](https://github.com/WuZongWei6/Pixelization/blob/main/LICENSE.md).
 
-## Acknowledgements
-- The code adapted from [pytorch-CycleGAN-and-pix2pix](https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix) and [SCGAN](https://github.com/makeuptransfer/SCGAN).
+Software Copyright License for non-commercial scientific research purposes. See [LICENSE.md](LICENSE.md).

@@ -2,127 +2,39 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 项目概述
+## 项目定位
 
-SIGGRAPH Asia 2022 论文 "Make Your Own Sprites: Aliasing-Aware and Cell-Controllable Pixelization" 的官方实现。将普通图像转换为像素风格艺术画，支持 2× 到 N× 的 cell size 控制。
+可配置管线的像素画生产工具，不是论文复现仓库。基于 SIGGRAPH Asia 2022 论文实现。
 
-## 目录结构
+## 核心架构原则
 
-```
-Pixelization/
-├── web/                        # Python 应用
-│   ├── api.py                  # FastAPI 入口
-│   ├── inference.py            # 模型推理封装（Model 类）
-│   ├── pipes/                  # 图像处理 pipe 包
-│   │   ├── __init__.py
-│   │   └── bg_unify.py
-│   ├── models/                 # 神经网络定义
-│   │   ├── __init__.py
-│   │   ├── basic_layer.py
-│   │   ├── c2pGen.py
-│   │   └── networks.py
-│   └── static/                 # 前端
-│       ├── index.html
-│       ├── style.css
-│       └── app.js
-│
-├── server/                     # Go 生产服务
-├── tests/                      # ONNX 验证 + 临时测试代码
-├── tools/                      # 工具脚本
-│   ├── batch_process.py
-│   ├── export_onnx.py
-│   └── convert_fp16.py
-├── docs/                       # 文档
-├── downloads/                  # 模型权重
-├── build/                      # 构建输出
-│
-├── requirements.txt
-├── CLAUDE.md / bref.md / do_task.md / README.md / LICENSE.md
-```
+- **pipe 模式**：每个图像处理能力是 `web/pipes/` 下的无状态函数，接收 PIL Image + 参数，返回 PIL Image。新增功能先加 pipe，再接 API。
+- **api.py 只做 HTTP**：参数校验、图像读写（`_read_image` / `_image_response`）、调用 pipe。不包含任何图像处理逻辑。
+- **模型管理与推理分离**：`pipes/pixelize.py` 是唯一持有模型状态的 pipe（Model 类）。其他 pipe 都是纯算法。
+- **双后端对等**：Python (FastAPI) 开发，Go (ONNX Runtime) 生产，API 接口一致。新增 pipe 需考虑两端同步。
+- **前端三文件**：index.html / style.css / app.js，不拆更多文件。新 pipe 在 app.js 的 PIPE_REGISTRY 注册。
 
-## 常用命令
+## 设计原则
 
-### python3执行环境
-```bash
-# 首先进入python3的环境
-source ~/py39/bin/activate
-```
-
-### Python 后端（FastAPI 开发服务器）
-```bash
-# 安装依赖
-pip install -r requirements.txt
-
-# 启动 API 服务（默认 127.0.0.1:8000）
-cd web && python api.py
-
-# 通过环境变量配置
-API_HOST=0.0.0.0 API_PORT=8080 python web/api.py
-```
-
-### Go 后端（ONNX Runtime 生产服务）
-```bash
-cd server
-# 需要设置 ONNX Runtime 库路径
-export ONNX_RUNTIME_LIB=/path/to/libonnxruntime.dylib
-go run . -addr :8000 -model ../tests/onnx/pixelization.onnx -static ../web/static
-```
-
-### ONNX 模型导出与验证
-```bash
-python tools/export_onnx.py    # 导出 PyTorch 模型为 ONNX
-python tests/verify_onnx.py    # 验证 ONNX 输出与 PyTorch 一致性
-python tools/convert_fp16.py   # FP16 权重转换
-```
-
-## 架构
-
-### 双后端架构
-
-项目有两套功能等价的后端服务，API 接口完全一致：
-
-| | Python (web/api.py) | Go (server/) |
-|---|---|---|
-| 用途 | 开发/调试 | 生产部署（无 Python 依赖） |
-| 推理引擎 | PyTorch 直接加载 .pth | ONNX Runtime |
-| 前端 | `web/static/` | `web/static/` |
-
-### HTTP API 端点
-
-- `GET /` — 前端页面
-- `POST /pixelize` — 像素化（参数: image 文件, cell_size 2-8）
-- `POST /optimize-colors` — K-Means 颜色优化（参数: image 文件, target_colors 2-256）
-- `POST /unify-background` — 背景色统一（参数: image 文件, tolerance 1.0-20.0, target_color）
-- `GET /health` — 健康检查
-
-### 推理流水线
-
-```
-输入图像 → rescale(128~4000px) → 尺寸对齐到 cell_size 倍数
-    → RGBEncoder → RGBDec(feature, cell_size_code) → AliasNet → 缩放输出
-```
-
-关键模块（`web/`）：
-- **inference.py** — Model 类，封装模型加载和推理流程
-- **pipes/bg_unify.py** — 背景色统一 pipe
-- **models/c2pGen.py** — C2P Generator（含 RGBEncoder、RGBDecoder、AliasNet）
-- **models/networks.py** — 网络工厂函数 `define_G()`
-- **models/basic_layer.py** — 基础网络层
-
-### 模型权重
-
-所有权重文件位于 `downloads/` 目录：
-- `downloads/alias_net.pth` — AliasNet 反锯齿网络
-- `downloads/pixelart_vgg19.pth` — VGG-19 结构提取器
-- `downloads/160_net_G_A.pth` — I2P Generator 权重
-
-### 设备支持
-
-自动检测优先级：MPS (Apple Silicon) > CUDA > CPU。Go 版本使用 ONNX Runtime 的 CPU 后端。
+- **最小入侵**：通过配置实现功能，最小化代码修改范围。优先复用已有函数（如 `rgb_to_lab`），不为两个消费者新建模块。
+- **骨架优先**：先端到端跑通最简实现，再逐步增强。新 pipe 先写最近色映射验证全链路，再补抖动模式。
+- **远虑近做**：设计阶段完整分析扩展场景并记录，实现阶段选最简单方案，不为"未来可能"提前写代码。
 
 ## 代码规范
 
-- 所有语言使用 **2 空格缩进**，禁止 Tab
-- Git 提交格式：`类型(范围): 描述`（≤50 字符），类型用 feat/fix/refactor/docs/test/chore
+- 所有语言 **2 空格缩进**，禁止 Tab
+- Git 提交：`类型(范围): 描述`（≤50 字符），类型用 feat/fix/refactor/docs/test/chore
 - Co-Authored-By: Claude Sonnet 4.5 \<noreply@anthropic.com\>
 - 交流用中文，通用技术术语保留英文
+
+## Python 环境
+
+```bash
+source ~/py39/bin/activate
+```
+
+## 关键路径
+
+- 权重文件：`downloads/`（原始）+ `tools/extract_inference_weights.py`（推理用提取）
+- 批量处理：`tools/batch_process.py`（HTTP 模式，读 JSON 配置调 API）
+- 设备优先级：MPS (Apple Silicon) > CUDA > CPU
