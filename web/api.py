@@ -13,6 +13,8 @@ from PIL import Image
 from pipes.pixelize import Model, pixelize as pixelize_pipe
 from pipes.bg_unify import unify_background, hex_to_rgb
 from pipes.optimize_colors import kmeans_colors
+from pipes.grayscale import grayscale
+from pipes.palette_map import palette_map
 
 app = FastAPI(title="Pixelization API")
 
@@ -145,6 +147,45 @@ async def unify_bg(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"背景统一失败: {str(e)}")
+
+
+@app.post("/grayscale")
+async def grayscale_endpoint(
+    image: UploadFile = File(..., description="PNG 图像文件"),
+    gray_levels: int = Form(0, description="灰阶级数: 0=连续, 2-256=量化"),
+):
+    """灰度接口"""
+    if gray_levels != 0 and (gray_levels < 2 or gray_levels > 256):
+        raise HTTPException(status_code=400, detail="gray_levels 必须为 0 或 2-256")
+
+    try:
+        img = await _read_image(image)
+        return _image_response(grayscale(img, gray_levels))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"灰度处理失败: {str(e)}")
+
+
+@app.post("/palette-map")
+async def palette_map_endpoint(
+    image: UploadFile = File(..., description="PNG 图像文件"),
+    palette: str = Form("pico-8", description="调色板名称或自定义色值"),
+    dither: str = Form("none", description="抖动模式: none / ordered / floyd-steinberg"),
+):
+    """调色板映射接口"""
+    if dither not in ("none", "ordered", "floyd-steinberg"):
+        raise HTTPException(status_code=400, detail="dither 必须为 none / ordered / floyd-steinberg")
+
+    try:
+        img = await _read_image(image)
+        return _image_response(palette_map(img, palette, dither))
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"调色板映射失败: {str(e)}")
 
 
 @app.get("/health")

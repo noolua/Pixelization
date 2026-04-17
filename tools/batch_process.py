@@ -37,6 +37,14 @@ PIPE_ENDPOINTS = {
   'unify-background': {
     'endpoint': '/unify-background',
     'param_types': {'tolerance': float, 'target_color': str}
+  },
+  'grayscale': {
+    'endpoint': '/grayscale',
+    'param_types': {'gray_levels': int}
+  },
+  'palette-map': {
+    'endpoint': '/palette-map',
+    'param_types': {'palette': str, 'dither': str}
   }
 }
 

@@ -43,13 +43,56 @@ const PIPE_REGISTRY = {
               min: 2, max: 256, default: 32 }
         ],
         resultType: 'pixelated'
+    },
+    'grayscale': {
+        type: 'grayscale',
+        label: '灰度',
+        endpoint: '/grayscale',
+        params: [
+            { key: 'gray_levels', label: '灰阶级数', type: 'select',
+              options: [
+                { value: 0, label: '连续灰度' },
+                { value: 2, label: '2 级' },
+                { value: 4, label: '4 级 (GameBoy)' },
+                { value: 8, label: '8 级 (阴影)' },
+                { value: 16, label: '16 级' },
+                { value: 32, label: '32 级' }
+              ],
+              default: 4 }
+        ],
+        resultType: 'pixelated'
+    },
+    'palette-map': {
+        type: 'palette-map',
+        label: '调色板映射',
+        endpoint: '/palette-map',
+        params: [
+            { key: 'palette', label: '调色板', type: 'select',
+              options: [
+                { value: 'pico-8', label: 'PICO-8 (16色)' },
+                { value: 'gameboy', label: 'GameBoy (4色)' },
+                { value: 'nes', label: 'NES (54色)' },
+                { value: 'c64', label: 'Commodore 64 (16色)' },
+                { value: 'endesga-32', label: 'Endesga 32 (32色)' }
+              ],
+              default: 'pico-8' },
+            { key: 'dither', label: '抖动', type: 'select',
+              options: [
+                { value: 'none', label: '无' },
+                { value: 'ordered', label: '有序' },
+                { value: 'floyd-steinberg', label: 'Floyd-Steinberg' }
+              ],
+              default: 'none' }
+        ],
+        resultType: 'pixelated'
     }
 };
 
 const PIPELINE_PRESETS = {
     'default': { label: '默认（像素化 → 颜色优化）', pipes: ['pixelize', 'optimize-colors'] },
     'with-bg': { label: '含背景统一', pipes: ['unify-background', 'pixelize', 'optimize-colors'] },
-    'bg-only': { label: '仅背景统一', pipes: ['unify-background'] }
+    'bg-only': { label: '仅背景统一', pipes: ['unify-background'] },
+    'gameboy': { label: 'GameBoy 风格', pipes: ['pixelize', 'grayscale', 'palette-map'] }
 };
 
 let _pipeIdCounter = 0;
