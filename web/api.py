@@ -11,7 +11,7 @@ import io
 from pathlib import Path
 from PIL import Image
 
-from inference import Model
+from pipes.pixelize import Model, pixelize as pixelize_pipe
 from pipes.bg_unify import unify_background, hex_to_rgb
 from pipes.optimize_colors import kmeans_colors
 
@@ -98,7 +98,7 @@ async def pixelize(
             raise HTTPException(status_code=400, detail="无效的图像文件")
 
         img = Image.open(io.BytesIO(contents))
-        result_img = model.pixelize_image(img, cell_size)
+        result_img = pixelize_pipe(model, img, cell_size)
 
         buf = io.BytesIO()
         result_img.save(buf, format="PNG")
