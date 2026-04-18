@@ -85,6 +85,28 @@ const PIPE_REGISTRY = {
               default: 'none' }
         ],
         resultType: 'pixelated'
+    },
+    'edge-darken': {
+        type: 'edge-darken',
+        label: '边缘加深',
+        endpoint: '/edge-darken',
+        params: [
+            { key: 'tolerance', label: '容差', type: 'range',
+              min: 1, max: 20, step: 0.5, default: 5.0 },
+            { key: 'strength', label: '强度', type: 'range',
+              min: 0.1, max: 0.7, step: 0.05, default: 0.3 }
+        ],
+        resultType: 'pixelated'
+    },
+    'bg-transparent': {
+        type: 'bg-transparent',
+        label: '背景透明化',
+        endpoint: '/bg-transparent',
+        params: [
+            { key: 'tolerance', label: '容差', type: 'range',
+              min: 1, max: 20, step: 0.5, default: 5.0 }
+        ],
+        resultType: 'default'
     }
 };
 

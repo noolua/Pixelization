@@ -15,6 +15,8 @@ from pipes.bg_unify import unify_background, hex_to_rgb
 from pipes.optimize_colors import kmeans_colors
 from pipes.grayscale import grayscale
 from pipes.palette_map import palette_map
+from pipes.edge_darken import edge_darken
+from pipes.bg_transparent import bg_transparent
 
 app = FastAPI(title="Pixelization API")
 
@@ -192,6 +194,45 @@ async def palette_map_endpoint(
 async def health():
     """健康检查接口"""
     return {"status": "ok", "model_loaded": model is not None}
+
+
+@app.post("/edge-darken")
+async def edge_darken_endpoint(
+    image: UploadFile = File(..., description="PNG/JPG 图像文件"),
+    tolerance: float = Form(5.0, description="Delta-E 容差，范围 1.0-20.0"),
+    strength: float = Form(0.3, description="加深强度，范围 0.1-0.7"),
+):
+    """边缘加深接口"""
+    if tolerance < 1.0 or tolerance > 20.0:
+        raise HTTPException(status_code=400, detail="tolerance 必须在 1.0-20.0 之间")
+    if strength < 0.1 or strength > 0.7:
+        raise HTTPException(status_code=400, detail="strength 必须在 0.1-0.7 之间")
+
+    try:
+        img = await _read_image(image)
+        return _image_response(edge_darken(img, tolerance, strength))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"边缘加深失败: {str(e)}")
+
+
+@app.post("/bg-transparent")
+async def bg_transparent_endpoint(
+    image: UploadFile = File(..., description="PNG/JPG 图像文件"),
+    tolerance: float = Form(5.0, description="Delta-E 容差，范围 1.0-20.0"),
+):
+    """背景透明化接口"""
+    if tolerance < 1.0 or tolerance > 20.0:
+        raise HTTPException(status_code=400, detail="tolerance 必须在 1.0-20.0 之间")
+
+    try:
+        img = await _read_image(image)
+        return _image_response(bg_transparent(img, tolerance))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"背景透明化失败: {str(e)}")
 
 
 if __name__ == "__main__":

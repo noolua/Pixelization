@@ -98,29 +98,22 @@ def _kmeans_anchor(pixels: np.ndarray, k: int = 3, max_iter: int = 20) -> np.nda
     return centers[largest]
 
 
-def unify_background(
-    image: Image.Image,
-    tolerance: float = 5.0,
-    target_rgb: tuple = (128, 128, 128),
-) -> Image.Image:
+def detect_background_mask(
+    image: Image.Image, tolerance: float = 5.0,
+) -> tuple:
     """
-    统一图像背景色。
+    检测背景区域掩码。
 
-    算法：边缘采样 → 锚定色 → Lab Delta-E 候选掩码 → BFS flood fill → 替换。
+    算法：边缘采样 → 锚定色 → Lab Delta-E 候选掩码 → BFS flood fill。
 
     参数:
         image: 输入 PIL 图像
         tolerance: Delta-E 容差（越大越激进）
-        target_rgb: 目标背景色 (R, G, B)
     返回:
-        背景统一后的 PIL 图像
+        (img_array, mask) — img_array 是 (H,W,3) RGB uint8，mask 是 (H,W) bool
     """
     img_array = np.array(image.convert("RGB"))
     H, W, _ = img_array.shape
-
-    # 极小图片直接返回
-    if H < 10 or W < 10:
-        return Image.fromarray(img_array)
 
     # 1. 边缘采样（自适应宽度）
     border_w = max(3, min(H, W) // 50)
@@ -178,7 +171,33 @@ def unify_background(
         queue.append((r, c - 1))
         queue.append((r, c + 1))
 
-    # 6. 替换掩码区域为目标色
+    return img_array, mask
+
+
+def unify_background(
+    image: Image.Image,
+    tolerance: float = 5.0,
+    target_rgb: tuple = (128, 128, 128),
+) -> Image.Image:
+    """
+    统一图像背景色。
+
+    算法：边缘采样 → 锚定色 → Lab Delta-E 候选掩码 → BFS flood fill → 替换。
+
+    参数:
+        image: 输入 PIL 图像
+        tolerance: Delta-E 容差（越大越激进）
+        target_rgb: 目标背景色 (R, G, B)
+    返回:
+        背景统一后的 PIL 图像
+    """
+    img_array, mask = detect_background_mask(image, tolerance)
+    H, W = img_array.shape[:2]
+
+    # 极小图片直接返回
+    if H < 10 or W < 10:
+        return Image.fromarray(img_array)
+
     if not mask.any():
         return Image.fromarray(img_array)
 
