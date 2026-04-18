@@ -322,6 +322,19 @@ fileInput.addEventListener('change', e => {
     if (e.target.files.length > 0) { selectedFile = e.target.files[0]; onFileSelected(); }
 });
 
+document.addEventListener('paste', e => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+        if (item.type.startsWith('image/')) {
+            e.preventDefault();
+            selectedFile = item.getAsFile();
+            if (selectedFile) onFileSelected();
+            return;
+        }
+    }
+});
+
 uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
 uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
 uploadArea.addEventListener('drop', e => {
