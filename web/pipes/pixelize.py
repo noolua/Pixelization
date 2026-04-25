@@ -4,6 +4,7 @@
 基于神经网络的图像像素化 pipe，包含模型定义、加载和推理。
 """
 import os
+import time
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
@@ -138,15 +139,22 @@ def pixelize(model, pil_img: Image.Image, cell_size: int) -> Image.Image:
                      Image.BICUBIC)
   in_t = _process(in_img)
 
-  if model.backend == "onnx":
-    return _pixelize_onnx(model, in_t, target_w, target_h)
+  backend = model.backend
+  t0 = time.perf_counter()
 
-  with torch.no_grad():
-    in_t = in_t.to(model.device)
-    feature = model.net.RGBEnc(in_t)
-    images = model.net.RGBDec(feature, model.cell_size_code)
-    out_t = model.alias_net(images)
-    return _to_image(out_t, target_w, target_h)
+  if backend == "onnx":
+    result = _pixelize_onnx(model, in_t, target_w, target_h)
+  else:
+    with torch.no_grad():
+      in_t = in_t.to(model.device)
+      feature = model.net.RGBEnc(in_t)
+      images = model.net.RGBDec(feature, model.cell_size_code)
+      out_t = model.alias_net(images)
+      result = _to_image(out_t, target_w, target_h)
+
+  elapsed = (time.perf_counter() - t0) * 1000
+  print(f"[pixelize] {backend} {width}x{height} → {target_w}x{target_h}  {elapsed:.1f} ms")
+  return result
 
 
 def _pixelize_onnx(model, in_t, target_w, target_h):
