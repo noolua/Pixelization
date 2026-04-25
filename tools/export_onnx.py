@@ -25,8 +25,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from models.c2pGen import RGBEncoder, RGBDecoder, AliasNet
 
-# FP16 minimum positive normal value
-FP16_EPS = 1e-3  # safe margin above FP16 precision limit
+# FP16-safe eps: above FP16 subnormal range, below original 1e-3
+FP16_EPS = 1e-5
 
 
 class ONNXModulationConvBlock(nn.Module):
@@ -38,17 +38,17 @@ class ONNXModulationConvBlock(nn.Module):
   standard conv2d with modulated/demodulated weights — mathematically
   identical.
 
-  FP16-safe: eps clamped to 1e-3, normalization denom clamped.
+  FP16-safe: eps clamped to FP16_EPS when use_fp16=True.
   """
 
-  def __init__(self, orig):
+  def __init__(self, orig, use_fp16=False):
     super().__init__()
     self.in_c = orig.in_c
     self.out_c = orig.out_c
     self.ksize = orig.ksize
     self.stride = orig.stride
     self.padding = orig.padding
-    self.eps = max(orig.eps, FP16_EPS)  # FP16-safe eps
+    self.eps = max(orig.eps, FP16_EPS) if use_fp16 else orig.eps
     self.wscale = float(orig.wscale)
     self.activate_scale = float(orig.activate_scale)
     self.weight = nn.Parameter(orig.weight.data.clone())
@@ -94,19 +94,20 @@ class ONNNUpsample(nn.Module):
 class ONNXRGBDecoder(nn.Module):
   """ONNX-exportable RGBDecoder using ONNXModulationConvBlock."""
 
-  def __init__(self, orig):
+  def __init__(self, orig, use_fp16=False):
     super().__init__()
-    self.mod_conv_1 = ONNXModulationConvBlock(orig.mod_conv_1)
-    self.mod_conv_2 = ONNXModulationConvBlock(orig.mod_conv_2)
+    mk = lambda b: ONNXModulationConvBlock(b, use_fp16)
+    self.mod_conv_1 = mk(orig.mod_conv_1)
+    self.mod_conv_2 = mk(orig.mod_conv_2)
     # mod_conv_3..8: original RGBDecoder.forward reuses mod_conv_2 for all
     # subsequent calls (mod_conv_3..8 exist in __init__ but are never used
     # in forward — they hold random untrained weights)
-    self.mod_conv_3 = ONNXModulationConvBlock(orig.mod_conv_2)
-    self.mod_conv_4 = ONNXModulationConvBlock(orig.mod_conv_2)
-    self.mod_conv_5 = ONNXModulationConvBlock(orig.mod_conv_2)
-    self.mod_conv_6 = ONNXModulationConvBlock(orig.mod_conv_2)
-    self.mod_conv_7 = ONNXModulationConvBlock(orig.mod_conv_2)
-    self.mod_conv_8 = ONNXModulationConvBlock(orig.mod_conv_2)
+    self.mod_conv_3 = mk(orig.mod_conv_2)
+    self.mod_conv_4 = mk(orig.mod_conv_2)
+    self.mod_conv_5 = mk(orig.mod_conv_2)
+    self.mod_conv_6 = mk(orig.mod_conv_2)
+    self.mod_conv_7 = mk(orig.mod_conv_2)
+    self.mod_conv_8 = mk(orig.mod_conv_2)
 
     self.upsample_block1 = ONNNUpsample(2)
     self.conv_1 = orig.conv_1
@@ -160,10 +161,10 @@ class ONNXAliasNet(nn.Module):
 class PixelizationPipeline(nn.Module):
   """Combined pipeline: RGBEnc -> RGBDec(ONNX) -> AliasNet."""
 
-  def __init__(self, rgb_enc, rgb_dec, alias_net, cell_size_code):
+  def __init__(self, rgb_enc, rgb_dec, alias_net, cell_size_code, use_fp16=False):
     super().__init__()
     self.rgb_enc = rgb_enc
-    self.rgb_dec = ONNXRGBDecoder(rgb_dec)
+    self.rgb_dec = ONNXRGBDecoder(rgb_dec, use_fp16)
     self.alias_net = ONNXAliasNet(alias_net)
     self.register_buffer("cell_size_code", cell_size_code)
 
@@ -232,7 +233,7 @@ def export(args):
 
   # 3. Build combined pipeline
   print("[3/4] Building ONNX-friendly pipeline...")
-  pipeline = PixelizationPipeline(net.RGBEnc, net.RGBDec, alias_net, cell_size_code)
+  pipeline = PixelizationPipeline(net.RGBEnc, net.RGBDec, alias_net, cell_size_code, use_fp16)
   pipeline.eval()
 
   if use_fp16:
