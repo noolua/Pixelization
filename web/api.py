@@ -6,6 +6,7 @@ from fastapi.responses import Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import torch
+import os
 import io
 from pathlib import Path
 from PIL import Image
@@ -53,8 +54,9 @@ def load_model():
     """启动时加载模型"""
     global model
     device = get_device()
-    print(f"Using device: {device}")
-    model = Model(MODEL_NAME, device=device)
+    backend = os.environ.get("PIPELINE_BACKEND", "pytorch")
+    print(f"Using device: {device}, backend: {backend}")
+    model = Model(MODEL_NAME, device=device, backend=backend)
     model.load()
     print("Model loaded successfully")
 

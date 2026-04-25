@@ -3,6 +3,7 @@
 像素化处理模块
 基于神经网络的图像像素化 pipe，包含模型定义、加载和推理。
 """
+import os
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
@@ -13,6 +14,7 @@ from pathlib import Path
 from models.c2pGen import RGBEncoder, RGBDecoder, AliasNet
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
+ONNX_MODEL_PATH = PROJECT_ROOT / "tools" / "onnx" / "pixelization.onnx"
 
 
 class _PixelNet(nn.Module):
@@ -24,14 +26,26 @@ class _PixelNet(nn.Module):
 
 
 class Model():
-  def __init__(self, model_name, device="cuda"):
+  def __init__(self, model_name, device="cuda", backend="pytorch"):
+    """
+    参数:
+        backend: "pytorch" 使用原始 .pth 模型, "onnx" 使用 ONNX Runtime
+    """
     self.device = torch.device(device)
     self.net = None
     self.alias_net = None
     self.cell_size_code = None
     self.model_name = model_name
+    self.backend = backend
+    self.session = None  # ONNX Runtime session
 
   def load(self):
+    if self.backend == "onnx":
+      self._load_onnx()
+    else:
+      self._load_pytorch()
+
+  def _load_pytorch(self):
     with torch.no_grad():
       # 加载推理专用网络（RGBEnc + RGBDec）
       self.net = _PixelNet()
@@ -52,6 +66,15 @@ class Model():
       # 加载预计算的 cell_size_code
       self.cell_size_code = torch.load(str(PROJECT_ROOT / "downloads" / "cell_size_code.pt"),
                                         map_location=self.device)
+
+  def _load_onnx(self):
+    import onnxruntime as ort
+    onnx_path = os.environ.get("ONNX_MODEL_PATH", str(ONNX_MODEL_PATH))
+    providers = ["CoreMLExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider"]
+    available = ort.get_available_providers()
+    providers = [p for p in providers if p in available]
+    self.session = ort.InferenceSession(onnx_path, providers=providers)
+    print(f"ONNX model loaded from {onnx_path}, providers: {providers}")
 
 
 def rescale(image, Rescale=True):
@@ -104,19 +127,29 @@ def pixelize(model, pil_img: Image.Image, cell_size: int) -> Image.Image:
       像素化后的 PIL Image
   """
   pil_img = pil_img.convert('RGB')
+  orig_width, orig_height = pil_img.size
+  target_w = orig_width // cell_size
+  target_h = orig_height // cell_size
+
+  in_img = rescale(pil_img)
+  width, height = in_img.size
+  best_cell_size = 4
+  in_img = in_img.resize(((width // cell_size) * best_cell_size, (height // cell_size) * best_cell_size),
+                     Image.BICUBIC)
+  in_t = _process(in_img)
+
+  if model.backend == "onnx":
+    return _pixelize_onnx(model, in_t, target_w, target_h)
+
   with torch.no_grad():
-    orig_width, orig_height = pil_img.size
-    target_w = orig_width // cell_size
-    target_h = orig_height // cell_size
-
-    in_img = rescale(pil_img)
-    width, height = in_img.size
-    best_cell_size = 4
-    in_img = in_img.resize(((width // cell_size) * best_cell_size, (height // cell_size) * best_cell_size),
-                       Image.BICUBIC)
-    in_t = _process(in_img).to(model.device)
-
+    in_t = in_t.to(model.device)
     feature = model.net.RGBEnc(in_t)
     images = model.net.RGBDec(feature, model.cell_size_code)
     out_t = model.alias_net(images)
     return _to_image(out_t, target_w, target_h)
+
+
+def _pixelize_onnx(model, in_t, target_w, target_h):
+  """ONNX Runtime 推理路径"""
+  out = model.session.run(None, {"image": in_t.numpy()})
+  return _to_image(torch.from_numpy(out[0]), target_w, target_h)
