@@ -11,8 +11,11 @@
 - **背景统一** — Lab 空间 Delta-E 容差的背景色替换
 - **灰度** — 可量化灰阶（GameBoy 4 级、8 级阴影等）
 - **调色板映射** — 内置 PICO-8 / GameBoy / NES / C64 / Endesga 32 等复古调色板，支持有序抖动和 Floyd-Steinberg 抖动
+- **边缘加深** — Lab 空间边缘检测 + 加深，增强轮廓清晰度
+- **背景透明化** — Lab 空间 Delta-E 容差的背景色透明替换，输出 PNG Alpha 通道
 - **批量处理** — JSON 配置驱动，批量处理图像目录并生成拼图
 - **管线组合** — 前端可自由排列 pipe 顺序，实时预览中间结果
+- **剪贴板粘贴** — 前端支持 Ctrl+V 直接粘贴上传图像
 
 ## 快速开始
 
@@ -47,6 +50,8 @@ python tools/batch_process.py --config batch.json --input ./images --output ./ou
 | `/unify-background` | POST | 背景色统一（tolerance, target_color） |
 | `/grayscale` | POST | 灰度（gray_levels: 0=连续, 2-256=量化） |
 | `/palette-map` | POST | 调色板映射（palette, dither） |
+| `/edge-darken` | POST | 边缘加深（tolerance 1-20, strength 0.1-0.7） |
+| `/bg-transparent` | POST | 背景透明化（tolerance 1-20） |
 | `/health` | GET | 健康检查 |
 
 所有 POST 端点接收 `image` 文件上传 + 表单参数，返回 PNG 图像。
@@ -61,7 +66,9 @@ web/
 │   ├── optimize_colors.py  # 颜色优化
 │   ├── bg_unify.py     #   背景统一
 │   ├── grayscale.py    #   灰度
-│   └── palette_map.py  #   调色板映射
+│   ├── palette_map.py  #   调色板映射
+│   ├── edge_darken.py  #   边缘加深
+│   └── bg_transparent.py   # 背景透明化
 ├── models/             # 神经网络层定义
 └── static/             # 前端（HTML/CSS/JS）
 
@@ -73,6 +80,8 @@ downloads/              # 模型权重
 ## 双后端
 
 Python（FastAPI + PyTorch）用于开发调试，Go（ONNX Runtime）用于生产部署，API 接口一致。
+
+Python 端也支持 ONNX Runtime 推理后端（`pixelize.py` 自动检测），提供模型权重 FP16 导出工具（`tools/`）。
 
 ## License
 
