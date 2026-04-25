@@ -168,10 +168,13 @@ class PixelizationPipeline(nn.Module):
     self.register_buffer("cell_size_code", cell_size_code)
 
   def forward(self, x):
+    # Cast input to match model precision (FP32→FP16 when exported with --fp16)
+    target_dtype = next(self.parameters()).dtype
+    x = x.to(target_dtype)
     feature = self.rgb_enc(x)
     images = self.rgb_dec(feature, self.cell_size_code)
     out = self.alias_net(images)
-    return out
+    return out.to(torch.float32)
 
 
 def clamp_weights_for_fp16(model):
@@ -243,9 +246,9 @@ def export(args):
   onnx_path = os.path.join(args.output_dir, f"pixelization{suffix}.onnx")
 
   print(f"[4/4] Exporting to {onnx_path}...")
+  # Keep dummy_input as FP32 so ONNX I/O signature stays float32.
+  # Weights are FP16 (small file), but input/output accept FP32 (universal).
   dummy_input = torch.randn(1, 3, 256, 256)
-  if use_fp16:
-    dummy_input = dummy_input.half()
 
   with torch.no_grad():
     torch.onnx.export(
